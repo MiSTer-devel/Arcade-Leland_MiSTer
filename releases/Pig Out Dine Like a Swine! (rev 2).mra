@@ -1,5 +1,5 @@
 <misterromdescription>
-	<name>Pig Out: Dine Like a Swine!</name>
+	<name>Pig Out: Dine Like a Swine! (rev 2?)</name>
 	<mameversion>0.257</mameversion>
 	<setname>pigout</setname>
 	<year>1990</year>
@@ -7,7 +7,7 @@
 	<category>Platform</category>
 	<rbf>SuperOffRoad</rbf>
 
-	<rom index="0" zip="pigout.zip" md5="None" type="merged">
+	<rom index="0" address="0x30000000" zip="pigout.zip" md5="None" type="merged">
 		<part>4C 01 03 02 01 10 00 00 00 00 00 00 00 00 00 00</part>
 
 		<part name="03-29020-0x.u58t" crc="8fe4b683" length="0x10000"/>
@@ -59,12 +59,25 @@
 		<part name="eeprom-pigout.bin" crc="9646fa72" length="0x80"/>
 	</rom>
 
-	<switches page="1" title="DIP Switches">
-		<dip name="Lives"        bits="7:6" values="3,4,5,2"/>
-		<dip name="Difficulty"   bits="9:8" values="Normal,Easy,Hard,Very Hard"/>
-		<dip name="Service Mode" bits="4"   values="Off,On"/>
-		<dip name="Free Play"    bits="5"   values="Off,On"/>
-	</switches>
+	<!--
+	  Per-game button labels. The core's "J1,Nitro,Coin,Gas,Start" string in
+	  SuperOffRoad.sv is a compile-time localparam shared by all three games
+	  this RBF serves, and is correct only for the WHEELS3_PEDALS3 games
+	  (offroad/offroadt). pigout is JOY4_DIGITAL, where those same four J1
+	  positions land on BUTTON1, BUTTON2, START1, COIN1, so the stock labels
+	  are wrong, not just vague: "Gas" is really Start, "Start" is really
+	  Coin. (pigout exposing start/coin as mappable J1 buttons is
+	  deliberate, per WP-L3: without a 4th declared button the OSD had
+	  nothing to bind to bit7, coin stayed low, and the game never left
+	  attract mode.)
+
+	  Four names only, matching the four inputs the game actually has. The
+	  operator menu is opened from the OSD ("Service Menu"), which holds P1
+	  Start and then Test for you; there is no Service button to map.
+	  Button 1 is Jump and Button 2 is Throw (confirmed in play, 2026-07-26).
+	  Player 2 maps its own copies of these. "default" is deliberately not
+	  set, since supplying it would rewrite existing gamepad bindings.
+	-->
 	<buttons names="Jump,Throw,Start,Coin"></buttons>
 
 </misterromdescription>
