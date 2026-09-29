@@ -20,6 +20,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_board.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_master.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_slave.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_video.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_retimer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_ddr_loader.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_dpram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_eeprom_93c46.sv
 
