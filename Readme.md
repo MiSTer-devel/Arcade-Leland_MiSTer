@@ -1,121 +1,112 @@
-# Super Off-Road — MiSTer FPGA Core
+# Super Off-Road - MiSTer FPGA Core
 
 A from-scratch MiSTer FPGA re-implementation of Leland/Tradewest's **Super
-Off-Road** (1989) — twin Z80 master/slave boards, custom tile/sprite video,
+Off-Road** (1989): twin Z80 master/slave boards, custom tile/sprite video,
 and the real Leland 80186-based sound board, all reproduced in RTL rather
-than emulated at the instruction level.
+than emulated at the instruction level. The same bitstream also runs
+**Super Off-Road Track-Pak** and **Pig Out: Dine Like a Swine!**.
 
-## Status
+## Supported games
 
-The core boots, plays, and drives sound through a real 80186 CPU
-implementation — this is not a sample-playback stand-in, it's the Leland
-sound board's architecture (80186 core + 8253 PIT + DAC/mixer) recreated
-in RTL and driven by the game's real sound ROM.
-
-#### Known Issues - CRT/Analog video no sync. Working to resolve but for now HDMI only
-
-| Subsystem | Status |
-|---|---|
-| Master/Slave Z80 (game logic, bankswitching, EEPROM) | Working |
-| Tile/sprite video | Working |
-| Leland 80186 sound board (real CPU, real ROM, real DAC) | Working |
-| Controls (spinner, digital d-pad, analog stick, digital gas) | Working |
-| Service mode / free play (OSD toggles) | Working |
-| Lives / difficulty | Set in the game's own service-mode menu (stored in EEPROM); the hardware has no DIP switches |
-
-### Supported games
-
-This started as a Super Off-Road-only core. **Pig Out: Dine Like a
-Swine!** (`pigout`) now also boots and plays on the same bitstream, along
-with the Super Off-Road Track-Pak (`offroadt`) update set — each has its
-own MRA under `releases/`. The board isn't generic across the whole
-Leland catalog yet; these are the games verified so far, not a claim of
-full Leland-family support.
-
-| Game | Set | Status |
+| Game | MAME set | MRA |
 |---|---|---|
-| Ironman Ivan Stewart's Super Off-Road | `offroad` | Working |
-| Super Off-Road Track-Pak | `offroadt` | Working |
-| Pig Out: Dine Like a Swine! | `pigout` | Working |
+| Ironman Ivan Stewart's Super Off-Road (rev 4) | `offroad` | `Ironman Ivan Stewart's Super Off-Road (rev 4).mra` |
+| Ironman Ivan Stewart's Super Off-Road Track-Pak (rev 4) | `offroadt` | `Ironman Ivan Stewart's Super Off-Road Track-Pak (rev 4).mra` |
+| Pig Out: Dine Like a Swine! (rev 2) | `pigout` | `Pig Out Dine Like a Swine! (rev 2).mra` |
 
-A note on accuracy: this core was developed by studying MAME's Leland
-drivers and the game ROMs — it has not been verified against an original
-PCB, and MAME itself is an emulator rather than a hardware model. Expect
-behavioral differences from real Leland hardware in edge cases.
+The board is not generic across the whole Leland catalog; these are the
+games verified so far.
 
-Known rough edge: analog-stick steering sensitivity runs a little hot for
-some players — tune-able in `rtl/steering_input.sv` (see Controls below).
-If you hit something else, please open an issue.
+This core was developed by studying MAME's Leland drivers and the game
+ROMs. It has not been verified against an original PCB, so expect small
+differences from real hardware in edge cases.
+
+## Video
+
+The core outputs standard video via the MiSTer scaler, and can also drive
+a CRT (15 kHz RGB or Y/C) directly.
+
+| OSD option | Effect |
+|---|---|
+| **Aspect ratio** | Original, Full Screen or a custom ratio |
+| **Video Timing** | **CRT 60Hz** (default): a DDR3 frame buffer regenerates the picture as NTSC-standard 240p (15.73 kHz / 60.03 Hz) while the game keeps running at its native 65.95 Hz. **Native 66Hz**: the game's own timing is passed straight through. |
+| **CRT V Position** | Shifts the picture up or down (CRT 60Hz timing only) |
+| **CRT V Size** | Scales the 240-line picture down to 236...208 lines with a photometric (linear-light) vertical blend, for CRTs that overscan the top and bottom (CRT 60Hz timing only) |
 
 ## Controls
 
-The real cabinet has a free-spinning steering wheel (not a centered
-potentiometer) and a gas pedal per player. This core supports three ways
-to drive, combined automatically — mix and match freely, no menu toggle
-needed to pick one:
+The cabinet has a free-spinning steering wheel and a gas pedal per player.
+Three steering inputs are combined automatically, so you can mix them:
 
 | Input | Behavior |
 |---|---|
 | **Spinner** | Direct 1:1 mapping, like the original cabinet |
-| **Analog stick** | Deflection = turn rate (not an absolute wheel position) |
-| **Digital d-pad** | Left/Right steer; OSD option **"D-Pad Steering"** picks the feel: **Velocity** (default — ramps a turn rate, coasts back to straight on release, closest to the real free-spinning wheel) or **Position** (drives a virtual spring-centered stick instead) |
+| **Analog stick** | Deflection sets the turn rate |
+| **Digital d-pad** | Left/Right steer. **D-Pad Steering** selects **Velocity** (default; ramps a turn rate and coasts back to straight) or **Position** (a virtual spring-centered stick) |
 
-Buttons (`J1,Nitro,Coin,Gas`):
+Buttons (`Nitro, Coin, Gas, Start`):
 
-| Button | Function |
-|---|---|
-| Button 1 | Nitro |
-| Button 2 | Coin |
-| Button 3 | Gas — MiSTer has no analog-trigger support, so throttle is a plain digital button (0/full) rather than the original analog pedal |
+| Button | Super Off-Road / Track-Pak | Pig Out |
+|---|---|---|
+| 1 | Nitro | Button 1 (Jump) |
+| 2 | Coin | Button 2 (Throw) |
+| 3 | Gas (digital: 0 or full; MiSTer has no analog trigger support) | Start |
+| 4 | Menu Enter (see Service menu) | Coin |
+
+## Service menu
+
+The game's operator menu is opened from the OSD with **Service Menu**; it
+presses the Test switch for you (plus Start for Pig Out). Inside the
+Super Off-Road menus, **Menu Enter** acts as Blue Nitro (P3's Nitro), so a
+single controller can select (Nitro) and enter (Menu Enter). Lives and
+difficulty are set there; the hardware has no DIP switches.
 
 ## Building
 
-Requires **Quartus Prime 17.0.x** (Lite or Standard):
+Requires **Quartus Prime 17.0.x** (Lite or Standard). The Z80 core is a git
+submodule, so clone with submodules:
 
 ```sh
+git clone --recurse-submodules <repo-url>
 quartus_sh --flow compile SuperOffRoad
 ```
 
-Produces `output_files/SuperOffRoad.rbf`.
+This produces `output_files/SuperOffRoad.rbf`.
 
 ## Installing on MiSTer
 
 Copy to your MiSTer:
 
-- `output_files/SuperOffRoad.rbf` (or the prebuilt one under `releases/`)
-  → `/media/fat/_Arcade/cores/`
-- The MRA for whichever game(s) you want, from `releases/` →
-  `/media/fat/_Arcade/`
+- `releases/Arcade-SuperOffRoad_<date>.rbf` (or your own build) to `/media/fat/_Arcade/cores/`
+- The MRA for each game you want, from `releases/`, to `/media/fat/_Arcade/`
 
-You'll need the matching MAME 0.257 ROM set for each game (`offroad`,
-`offroadt`, or `pigout`) — this repo does not include or distribute any
-ROM/PROM data, per usual MiSTer arcade-core convention.
+You need the matching MAME ROM set for each game (`offroad`, `offroadt` or
+`pigout`). This repo does not include or distribute any ROM data.
+
+The MRAs load the ROMs through DDR3 (`address="0x30000000"`), which makes
+loading much faster than the per-byte download.
 
 ## Simulation
 
-`sim/` has standalone ModelSim testbenches for the SDRAM controller and
-the full board (real Master/Slave Z80 cores booting against the real
-Master ROM) — see `sim/README.md` for exact commands. Useful for
-iterating on RTL changes far faster than a Quartus rebuild + hardware
-flash cycle.
+`sim/` has standalone ModelSim and Verilator testbenches for the SDRAM
+controller, the sound board and the full board (the real Z80 cores booting
+against the real ROMs). See `sim/README.md` for the commands.
 
 ## Credits / third-party sources
 
-- **MAME's `leland.cpp`/`leland_m.cpp`/`leland_v.cpp`/`leland_a.cpp`** —
-  studied throughout as the primary documentation of the Leland board's
-  behavior (not redistributed in this repo). MAME is an emulator, not a
-  hardware model, so it served as a study reference and comparison point
-  rather than ground truth.
-- [`tv80`](rtl/tv80) — open-source synthesizable Z80 core (MIT license).
-- [`jamieiles/80x86`](rtl/s80x86/README_VENDORING.md) — vendored 8086/80186
-  core powering the real sound-board CPU (GPLv3).
-- [`KF8253`](rtl/KF8253/README_UPSTREAM.md) — 8253 PIT core used by the
-  sound board.
-- Built on the standard [MiSTer framework](https://github.com/MiSTer-devel)
-  (`sys/`).
+- **MAME's `leland.cpp` / `leland_m.cpp` / `leland_v.cpp` / `leland_a.cpp`**:
+  studied as the primary documentation of the Leland board's behavior (not
+  redistributed here).
+- [`tv80`](https://github.com/hutch31/tv80): synthesizable Z80 core (MIT), as a submodule in `rtl/tv80`.
+- [`jamieiles/80x86`](rtl/s80x86/README_VENDORING.md): vendored 8086/80186
+  core for the sound-board CPU (GPLv3).
+- [`KF8253`](rtl/KF8253/README_UPSTREAM.md): 8253 PIT core for the sound
+  board.
+- `rtl/sdram.sv` and `rtl/sdram_banked.sv`: SDRAM controllers, MIT licensed
+  (Kevin Coleman).
+- The [MiSTer framework](https://github.com/MiSTer-devel) (`sys/`).
 
 ## License
 
-GNU GPL v2 (see `LICENSE`), matching MiSTer project convention. One vendored
-component (`rtl/s80x86`) is GPLv3 — mixing is consistent with how the wider
-MiSTer framework already combines GPLv2/GPLv3/MIT code.
+GNU GPL v3 or later (see `LICENSE`). The vendored and third-party components
+above keep their own licenses.

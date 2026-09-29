@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
 //============================================================================
 //  Super Off Road — Master Z80 CPU
 //
@@ -43,20 +46,14 @@ module sor_master
 	output [17:0] rom_addr,
 	input   [7:0] rom_data,
 
-	// Work RAM — dual-port: master writes, slave reads (Chunk 3)
+	// Work RAM (4 KB, private to the master)
 	output [11:0] wram_addr,   // 4 KB
 	output  [7:0] wram_din,
 	output        wram_we,
 	input   [7:0] wram_dout,
 
-	// Battery-backed RAM (0xA000-0xDFFF, 16 KB) -- validated against
-	// MAME leland.cpp master_redline_map_program: this range is
-	// normally FIXED, unbanked ROM (region "master" offset 0xA000,
-	// unaffected by bank_reg), overlaid by leland_m.cpp's
-	// m_battery_ram_view only when offroad_bankswitch()'s
-	// update_battery_ram_view((m_alternate_bank & 7) == 1) selects it,
-	// i.e. exactly when bank_reg == 1. Master-private (Slave's own
-	// separate 0xE000-0xEFFF map never touches this range).
+	// Battery-backed RAM (0xA000-0xDFFF, 16 KB), master-private: normally fixed ROM (region
+	// offset 0xA000), overlaid by MAME's battery_ram_view only when bank_reg == 1.
 	output [13:0] battram_addr,
 	output  [7:0] battram_din,
 	output        battram_we,
@@ -87,73 +84,37 @@ module sor_master
 	output        slave_nmi_n,
 	output        slave_int_req, // held level: asserted while /MCONT bit3=0
 
-	// WP10: 80186 sound-board control latch. Real hardware shares this
-	// exact write with the graphics bank-switch register -- port 0xF0/
-	// 0x00 (`io_bank`, already captured into `bank_reg` below): MAME's
-	// `redline_master_alt_bankswitch_w` (leland_m.cpp, confirmed by
-	// reading the source, NOT the earlier WP0 trace doc which mistakenly
-	// pointed at /MCONT/0xC9 instead -- see docs/WP10_PROGRESS.md)
-	// forwards the SAME full byte to both `leland_master_alt_bankswitch_w`
-	// (bank_reg) and `leland_80186_control_w` (the sound board's own
-	// /RESET|ZNMI|INT0|/TEST|INT1 bits, [7:3]) unconditionally, every
-	// write. `sound_ctrl_data` is that full byte; `sound_ctrl_wr` is a
-	// 1-cycle strobe on the same write, for `leland_sound_board.sv`'s
-	// existing `control_data`/`control_wr` port pair.
+	// 80186 sound-board control latch: port 0xF0 is both the graphics bank register
+	// (bank_reg) and the sound board's control register (/RESET, ZNMI, INT0, /TEST, INT1 in
+	// bits [7:3]); MAME's redline_master_alt_bankswitch_w forwards the same byte to both.
+	// sound_ctrl_wr is a one-cycle strobe on each write.
 	output  [7:0] sound_ctrl_data,
 	output        sound_ctrl_wr,
 
-	// WP10: sound command latch (leland_a.cpp command_lo_w/command_hi_w,
-	// ports 0xF2/0xF4 -- already decoded as io_cmd/io_snd_hi below,
-	// previously only feeding this module's own private
-	// sound_cmd_lo_r/sound_cmd_hi_r shadow regs for the echo stub).
-	// cmd_wr_data matches leland_sound_board.sv's own 16-bit
-	// cmd_wr_data/cmd_wr_lo/cmd_wr_hi port shape exactly (that module
-	// only ever consumes [7:0] on cmd_wr_lo or [15:8] on cmd_wr_hi, so
-	// the same byte is simply replicated into both halves here -- no
-	// separate lo/hi bus is needed).
+	// Sound command latch writes (ports 0xF2/0xF4, leland_a.cpp command_lo_w/command_hi_w).
+	// cmd_wr_data replicates the byte into both halves; the sound board only uses [7:0] on
+	// cmd_wr_lo and [15:8] on cmd_wr_hi.
 	output [15:0] cmd_wr_data,
 	output        cmd_wr_lo,
 	output        cmd_wr_hi,
 
-	// 2026-07-18 (real-hardware "song transition hangs the 80186"
-	// investigation, docs/WP10_PROGRESS.md): the real 80186 response
-	// latch (leland_sound_board.sv's own response_data output, always
-	// correct -- this was the missing wire, not a bug in that module).
-	// Port 0xF2 reads now return this directly instead of the old
-	// echo-stub register (retired -- see its own former declaration
-	// site's comment, now just historical narrative, for why it existed
-	// and what it was superseded by). Plain wire, no synchronizer needed -- this whole
-	// design shares one physical clk_sys domain; leland_sound_board.sv
-	// registers response_data synchronously on that same clock, so it's
-	// already glitch-free by construction, same as every other
-	// board-level status signal already wired this way.
+	// 80186 response latch (leland_sound_board response_data); port 0xF2 reads return it.
+	// Same clk_sys domain, so no synchroniser is needed.
 	input  [7:0]  response_data,
 
 	// Video address latch (triggers Slave sprite blit, Chunk 3)
 	output [15:0] vid_addr,
 	output        vid_addr_wr,
 
-	// Background tilemap scroll registers (validated against MAME
-	// leland_v.cpp scroll_w, invoked from leland_master_output_w at
-	// I/O offsets 0x0C-0x0F relative to io_base; for offroad io_base
-	// is 0xC0 and 0x80, i.e. absolute ports 0xCC-0xCF / 0x8C-0x8F).
+	// Background scroll registers (MAME scroll_w at io_base+0x0C-0x0F: ports 0xCC-0xCF and
+	// 0x8C-0x8F for Off-Road).
 	output [15:0] scroll_x,
 	output [15:0] scroll_y,
 
-	// Graphics bank (MAME leland_state::m_gfxbank / sor_video.sv's
-	// gfxbank input) -- set via the AY8910's Port A write callback
-	// (sound_port_w -> gfx_port_w in leland_v.cpp/leland_m.cpp), NOT
-	// directly by name. The AY8910 itself isn't emulated (no audio
-	// synthesis here), but the Master ROM drives it with a real
-	// register-select-then-data 2-step sequence (I/O offsets 0x0A
-	// /OGIA = address latch, 0x0B /OGID = data write, both dynamically
-	// relocated the same way as MCONT -- see io_mcont) that this
-	// design was previously dropping entirely, permanently stuck at
-	// gfxbank==0. Confirmed via sim boot trace: real boot code already
-	// writes register 0x0E (I/O Port A, standard AY-3-8910 register
-	// map) within the first few instructions. Only register 14 is
-	// tracked here -- every other AY8910 register (tone/noise/envelope/
-	// mixer) only affects audio, irrelevant without real sound anyway.
+	// Graphics bank (MAME m_gfxbank / sor_video gfxbank), set through the AY-3-8910 port A
+	// write callback: the ROM writes a register select (I/O 0x0A, /OGIA) then data (0x0B,
+	// /OGID), relocated like /MCONT. Only register 0x0E is tracked; the rest of the AY
+	// only affects audio.
 	output  [7:0] gfxbank,
 
 	// Slave HALT status (wired to GIN1 bit 0, active-low)
@@ -174,23 +135,15 @@ module sor_master
 	// against MAME leland_m.cpp leland_interrupt_callback).
 	input   [7:0] raster_line,
 
-	// Pedal (MAME AN0/AN1/AN2, IPT_PEDAL): raw value, no encoding, read
-	// directly at ports 0xFD/0xFE/0xFF. 2026-07-18: WP-controls found this
-	// was previously wired to the (misidentified) wheel signal, and these
-	// ports were dead code; see p1_wheel comment below for the real port map.
+	// Pedal (MAME AN0-AN2, IPT_PEDAL): raw value, read directly at ports 0xFD/0xFE/0xFF.
 	input   [7:0] p1_pedal,
 	input   [7:0] p2_pedal,
 	input   [7:0] p3_pedal,
 
-	// Wheel (MAME AN3/AN4/AN5, IPT_DIAL): a genuine free-spinning rotary
-	// encoder, NOT an absolute position -- real hardware/MAME never reads an
-	// absolute wheel angle, only the direction+magnitude of motion since the
-	// last read (leland_m.cpp dial_compute_value(), see the io_wheel1/2/3
-	// decode below). p1_wheel/p2_wheel/p3_wheel here are the free-running
-	// mod-256 "virtual dial" position (combining analog stick + d-pad +
-	// spinner upstream, see steering_input.sv) that this module samples on
-	// each real CPU read to compute that encoding -- exactly mirroring how
-	// MAME's ioport itself is just such an accumulated position.
+	// Wheel (MAME AN3-AN5, IPT_DIAL): a free-spinning encoder, so only the direction and
+	// magnitude of motion since the last read is reported (dial_compute_value). p*_wheel is
+	// the free-running mod-256 virtual dial (stick + d-pad + spinner, see
+	// steering_input.sv), sampled on each read.
 	input   [7:0] p1_wheel,
 	input   [7:0] p2_wheel,
 	input   [7:0] p3_wheel,
@@ -201,25 +154,18 @@ module sor_master
 	input   [3:0] p3_btn,
 	input         service,
 
-	// WP-L3: per-game I/O port base parameterization (leland_board_pkg::
-	// game_cfg, driven by the MRA header's game_id). io_base/mvram_base
-	// are the leland_master_input_r/output_w and leland_mvram_port_r/w
-	// window bases (MAME init_master_ports(mvram_base, io_base)).
-	// dual_io_window reproduces offroad's real double-install call
-	// (init_master_ports called twice, at base and base^0x40) --
-	// offroadt/pigout each use a single window and leave this deasserted.
-	// in4_port_en gates the pigout-only fixed IN4 @ raw 0x7F
-	// (install_read_port, outside the io_base window). input_scheme
-	// selects GIN0-3 bit content.
+	// Per-game I/O bases (leland_board_pkg::game_cfg, from the MRA header's game_id):
+	// io_base/mvram_base are the leland_master_input_r/output_w and leland_mvram_port_r/w
+	// window bases; dual_io_window reproduces Off-Road's double install; in4_port_en gates
+	// Pig Out's fixed IN4 at 0x7F; input_scheme selects the GIN0-3 bit layout.
 	input   [7:0] io_base,
 	input   [7:0] mvram_base,
 	input         dual_io_window,
 	input         in4_port_en,
 	input  leland_board_pkg::input_scheme_e input_scheme,
 
-	// WP-L3: 4-player digital joystick (JOY4_DIGITAL only); bit layout:
-	// [0]=right [1]=left [2]=down [3]=up [4]=btn1 [5]=btn2 [6]=start
-	// [7]=coin.
+	// 4-player digital joystick (Pig Out only): [0]=right [1]=left [2]=down [3]=up
+	// [4]=btn1 [5]=btn2 [6]=start [7]=coin.
 	input   [7:0] p1_joy, p2_joy, p3_joy, p4_joy,
 
 	// SDRAM stall: level-high during ROM read; stall when not ready
@@ -235,37 +181,19 @@ wire [15:0] cpu_addr;
 wire  [7:0] cpu_dout;
 reg   [7:0] cpu_din;
 
-// rom_req / wait_n wiring (declared after mem-decode wires below, but needed here)
-// Forward-declare: these reference in_fixed/in_banked defined further down.
-// SystemVerilog allows forward use of wires within the same module.
-
-// int_n_final declared here (moved up from below its own periodic-interrupt
-// logic) — some SystemVerilog tools (ModelSim) implicitly infer a net at
-// first use in a module port connection, which then conflicts with an
-// explicit `wire ... = ...` declaration later; Quartus tolerated this,
-// ModelSim doesn't. Declare before use to avoid the ambiguity.
+// int_n_final and mvport_stall are declared before the CPU instance: ModelSim infers an
+// implicit net at first use in a port connection, which then conflicts with a later
+// explicit declaration.
 wire int_n_final;
-
-// mvport_stall (from sor_vram_port below, forward-declared same as
-// int_n_final above) -- holds the CPU with /WAIT instead of ever
-// silently overwriting a not-yet-drained VRAM port op. See
-// sor_vram_port.sv's vp_stall comment.
-wire mvport_stall;
+wire mvport_stall; // from sor_vram_port: holds the CPU in /WAIT instead of overwriting
+                   // a VRAM port op that has not drained yet
 
 tv80s_ce #(.Mode(0), .T2Write(1), .IOWait(1)) master_cpu
 (
 	.reset_n(~reset),
 	.clk    (clk_sys),
 	.cen    (CE_6M),
-`ifdef NO_STALL_CONTROL
-	// Measurement-only control knob (docs/SESSION_2026-07-24_..._HANDOFF.md):
-	// neutralize the ROM-fetch stall term so the master Z80 never waits on
-	// rom_stall, isolating how much wall-clock progress SDRAM contention
-	// costs. Absent this define, behavior is bit-identical to before.
-	.wait_n (~mvport_stall),
-`else
 	.wait_n (~((rom_req & rom_stall) | mvport_stall)),
-`endif
 	.int_n  (int_n_final),
 	.nmi_n  (1'b1),
 	.busrq_n(1'b1),
@@ -300,11 +228,9 @@ always @(posedge clk_sys) begin
 		periodic_int_n <= 1'b1;
 end
 
-// The periodic "VA10" raster interrupt (leland_interrupt_callback) is
-// the only Master INT source in MAME -- there is no Slave->Master
-// command-port interrupt (see sor_slave.sv header comment: the two
-// CPUs only communicate through the shared VRAM mailbox and the
-// SLAVEHALT/GIN1 poll).
+// The periodic VA10 raster interrupt is the only master INT source in MAME; the CPUs
+// otherwise communicate through the shared VRAM mailbox and the SLAVEHALT/GIN1 poll
+// (see sor_slave.sv).
 assign int_n_final = periodic_int_n;
 
 //------------------------------------------------------------------
@@ -350,86 +276,19 @@ assign rom_req = mem_access & ~rd_n & (in_fixed | in_banked_lo | in_fixed_high);
 wire in_cram   = (cpu_addr[15:10] == 6'b111100);        // 0xF000-0xF3FF
 wire in_vidlat = (cpu_addr[15:1]  == 15'h7C00);         // 0xF800-0xF801
 
-// rom_addr: fixed region uses cpu_addr directly. fixed-high (0xA000-
-// 0xDFFF when the battery RAM view is NOT selected) is unbanked --
-// master_redline_map_program maps it straight to region "master"
-// offset 0xA000, i.e. rom_addr == cpu_addr with no bank_offset
-// involved at all.
+// rom_addr. The fixed region uses cpu_addr directly. Fixed-high (0xA000-0xDFFF while
+// the battery RAM view is off) is unbanked: master_redline_map_program maps it straight
+// to region offset 0xA000.
 //
-// Banked-low region (0x2000-0x9FFF): directly verified LIVE against
-// MAME's debugger (breakpoint at a known Z80 address, dasm the actual
-// bytes MAME itself is executing at that instant -- not a static file
-// guess) that this is NOT a uniform formula:
-//   bank_reg 0/1 (bank_offset==0x2000): rom_addr == cpu_addr exactly
-//     (verified: Z80 $2C29 live-disassembles as "LD HL,$01F4"'s
-//     continuation, matching flat ROM offset 0x2C29 exactly)
-//   bank_reg >=2: rom_addr == bank_offset + cpu_addr, NOT
-//     window-relative (cpu_addr - 0x2000) as originally implemented
-//     (verified: Z80 $2012 with bank_reg==2 live-disassembles as
-//     "JP $5D4B", which only exists in the ROM at flat offset
-//     0x12012 == bank_offset(0x10000) + cpu_addr(0x2012), not
-//     0x10012 which the old uniform "-0x2000" formula computed and
-//     is a completely different, non-jump instruction)
-// The asymmetry is real per MAME's own live execution even though its
-// exact internal cause (some detail of how offroad_bankswitch's
-// set_base/bankr interact for bank_list==0x2000 specifically) wasn't
-// fully traced through the C++ source -- this fix follows the
-// directly-observed ground truth rather than the C++ reading that
-// produced the wrong original formula. This was THE root cause of the
-// Master's periodic (~136ms) restart: reaching bank 2 at a "common"
-// low address under the old formula fetched garbage non-code bytes,
-// which eventually executed a RET popping a garbage stack address.
-//
-// 2026-07-12 correction: cpu_addr bit 15 is NOT actually part of the
-// bank_reg>=2 sum -- addresses $8000-$9FFF (the top 8 KB of the 32 KB
-// banked window) alias straight back onto $0000-$1FFF of the SAME
-// bank, they don't continue past it. Verified via two independent live
-// MAME captures: a real mid-gameplay Master WRAM+register snapshot
-// (docs/reference/mame/traces/gameplay_snapshot/) matched
-// bank_offset+cpu_addr with zero byte diffs for cpu_addr $2000-$7FFF,
-// but the $8000-$9FFF portion only matched at flat offset
-// bank_offset+(cpu_addr&$7FFF) -- i.e. bank_offset+$0000 at cpu $8000,
-// not bank_offset+$8000 as the un-masked formula computed (confirmed
-// byte-exact, 0 diffs, against a live $BDAB-breakpoint capture too).
-// Physically consistent with a real bank-switch ROM decode that only
-// wires cpu_addr[14:0] (a 32 KB/15-bit span) into the banked chip,
-// leaving A15 disconnected/ignored for this window. The bank_reg 0/1
-// case does NOT need this mask -- that branch was independently
-// verified byte-exact across the full $2000-$9FFF span with no masking
-// (it's really just cpu_addr passed straight through, not a genuine
-// bank-chip access).
-//
-// 2026-07-16: attempted a rotate_memory("master")-compensating fix here
-// (docs/SESSION_2026-07-15.md, Follow-up 23-24), verified byte-exact in
-// isolation (262144/262144 bytes matching a live MAME "master" region
-// dump after applying one rotate_memory pass to a naive reconstruction)
-// -- but reverted after hardware testing showed it breaks something
-// upstream: with this change plus the (independently good) Slave fix,
-// the Slave never reaches a single banked ROM read at all
-// (SLAVE_DBG_FINAL bank_max=0, banked_read_ever=0 -- previously this
-// reached bank 8 at least once), and VRAM fill collapsed back to
-// baseline-broken levels (fg_nonzero=609/61440, matching the original
-// unfixed 529, not the Slave-only fix's 26120). The Master fix is
-// wrong in some way not yet understood (a width-truncation concern was
-// checked and ruled out as the sole cause -- an explicit 15-bit
-// intermediate wire made no difference) -- reverted to the original,
-// previously-verified formula below pending further investigation.
-// Do not re-apply the rotation compensation here without first finding
-// why it breaks Master execution before the Slave ever gets a real
-// command.
-// 2026-07-16 conclusion (docs/SESSION_2026-07-15.md, Follow-up 24-25):
-// the rotation-compensation attempt above was reverted, and a Fable/
-// Opus review resolved WHY it broke things -- this formula (cpu_addr[14:0],
-// not window-relative cpu_addr-0x2000) is ALREADY mathematically
-// identical to "window-relative offset, rotated by +0x2000":
-// cpu_addr[14:0] == cpu_addr mod 0x8000 == ((cpu_addr-0x2000)+0x2000) mod 0x8000.
-// The 2026-07-12 session's empirically-discovered "use cpu_addr directly,
-// not cpu_addr-0x2000" fix was, unknowingly, already the correct
-// rotate_memory("master") compensation. No further Master fix is needed
-// -- adding another "+0x2000" on top (as the reverted attempt did) double-
-// rotates by 0x4000 (the SLAVE's amount, not the Master's), which is
-// exactly why it broke Master execution. Do not touch this formula again
-// without re-deriving from this note.
+// Banked-low (0x2000-0x9FFF), verified against MAME's live execution:
+//   bank_reg 0/1 (bank_offset 0x2000): rom_addr == cpu_addr
+//   bank_reg >= 2: rom_addr == bank_offset + cpu_addr[14:0]. It is not window-relative,
+//     and A15 is ignored: $8000-$9FFF alias back onto $0000-$1FFF of the same bank, as
+//     if only cpu_addr[14:0] reaches the banked chip.
+// This formula already is the rotate_memory("master") compensation (cpu_addr[14:0] ==
+// ((cpu_addr - 0x2000) + 0x2000) mod 0x8000). Adding another +0x2000 double-rotates by
+// the slave's amount and breaks master execution, so do not change it without
+// re-deriving.
 assign rom_addr = in_fixed      ? {5'b0, cpu_addr[12:0]} :
                   in_fixed_high ? {2'b0, cpu_addr} :
                   (bank_offset == 18'h02000) ? {2'b0, cpu_addr} :
@@ -454,9 +313,7 @@ assign wram_we   = mem_access & ~wr_n & in_wram;
 //------------------------------------------------------------------
 assign cram_addr = cpu_addr[9:0];
 assign cram_din  = cpu_dout;
-// cram_we itself is assigned further down, gated on mcont_r[1] --
-// see the comment there (mcont_r isn't declared until later in this
-// file, and this module doesn't pre-declare regs used by later assigns).
+// cram_we is assigned further down, gated on mcont_r[1].
 
 //------------------------------------------------------------------
 // Video address latch (0xF800-0xF801)
@@ -482,14 +339,10 @@ assign vid_addr_wr = vid_addr_wr_r;
 wire io_rd = ~iorq_n & ~rd_n;
 wire io_wr = ~iorq_n & ~wr_n;
 
-// WP-L3: leland_mvram_port_r/w range, parameterized by mvram_base
-// (MAME init_master_ports(mvram_base, io_base)). offroad's real driver
-// call installs this handler TWICE (mvram_base=0x00 and 0x40, dual_io_
-// window asserted); offroadt/pigout each install it once at their own
-// base. Declared here, before first use below, so tools that don't
-// tolerate forward references to implicit nets (ModelSim) don't choke
-// on a later explicit `wire io_mvram = ...` colliding with an
-// implicitly-inferred one.
+// leland_mvram_port_r/w range, parameterised by mvram_base (MAME init_master_ports).
+// Off-Road installs it twice (mvram_base 0x00 and 0x40, dual_io_window); Track-Pak and
+// Pig Out install it once. Declared here so ModelSim does not infer an implicit net at
+// first use.
 wire [7:0] mvram_base_alt = mvram_base ^ 8'h40;
 wire io_mvram = (cpu_addr[7:5] == mvram_base[7:5]) ||
                 (dual_io_window && (cpu_addr[7:5] == mvram_base_alt[7:5]));
@@ -527,46 +380,25 @@ sor_vram_port #(.TRANS_EN(1'b0)) mvport
 	.vp_rdata(vp_rdata)
 );
 
-// Real driver source (mamedev leland.cpp, redline_state::init_offroad):
-//   init_master_ports(0x00, 0xc0);
-//   init_master_ports(0x40, 0x80);   /* yes, this is intentional */
-// This dynamically installs the shared leland_master_input_r /
-// leland_master_output_w handlers (bank/cmd/stat/pal/mcont/GIN logic)
-// at physical address io_base+offset, aliased at BOTH io_base=0xC0
-// and io_base=0x80 -- NOT at the raw offset directly. Our own /MCONT
-// comment said "MAME offset 0x09", which is the offset *within* that
-// handler, not the physical port address the real Z80 code actually
-// uses (0xC0+0x09=0xC9, mirrored at 0x80+0x09=0x89). Confirmed via
-// sim (sor_board_tb.sv): the boot code's real /MCONT release sequence
-// (bit0 0->1, hold-then-run) was showing up as writes to port 0xC9
-// the entire session, which this design was silently ignoring because
-// it only ever listened on raw 0x09. Alias each of these dynamically-
-// relocated ports to all three addresses (raw, +0xC0, +0x80) so real
-// boot code -- which uses the relocated addresses -- is recognized.
-// Bank/cmd/stat/pal are NOT part of this dynamic scheme (they're
-// static entries in master_redline_map_io at 0xF0/0xF2/0xF3/0xF4) and
-// are unaffected.
+// MAME redline_state::init_offroad installs the shared leland_master_input_r/output_w
+// handlers (GIN, mcont, ay, scroll) at io_base+offset, aliased at both io_base=0xC0 and
+// 0x80, so the physical /MCONT port is 0xC9 (mirrored at 0x89), not the raw offset 0x09.
+// bank/cmd/stat/pal are static entries (0xF0/0xF2/0xF3/0xF4) and are not relocated.
 wire io_bank  = (cpu_addr[7:0] == 8'hF0);   // bank register write (static map entry)
 wire io_adc1  = (cpu_addr[7:0] == 8'hFD);   // P1 pedal, raw (MAME port 0xFD)
 wire io_adc2  = (cpu_addr[7:0] == 8'hFE);   // P2 pedal, raw
 wire io_adc3  = (cpu_addr[7:0] == 8'hFF);   // P3 pedal, raw
-// Real wheel ports (MAME redline_state::init_offroad/init_offroadt):
-// dedicated, fixed dial-encoded reads, entirely separate from the pedal
-// ports above -- offroad_wheel_1_r=0xF9 (P1), offroad_wheel_2_r=0xFB (P2),
-// offroad_wheel_3_r=0xF8 (P3). Fixed for both wheel-scheme games
-// (offroad/offroadt); unused/unconsumed for JOY4_DIGITAL (pigout).
+// Wheel ports (MAME init_offroad/init_offroadt): fixed dial-encoded reads at 0xF9 (P1),
+// 0xFB (P2) and 0xF8 (P3), separate from the pedal ports; unused by Pig Out.
 wire io_wheel1 = (cpu_addr[7:0] == 8'hF9);  // P1 wheel (offroad_wheel_1_r)
 wire io_wheel2 = (cpu_addr[7:0] == 8'hFB);  // P2 wheel (offroad_wheel_2_r)
 wire io_wheel3 = (cpu_addr[7:0] == 8'hF8);  // P3 wheel (offroad_wheel_3_r)
 
-// WP-L3: the dynamically-relocated leland_master_input_r/output_w window
-// (GIN0/1/3, mcont, ay, scroll) is now parameterized by io_base (MAME
-// init_master_ports(mvram_base, io_base)) instead of offroad's hardcoded
-// 0xC0/0x80. dual_io_window reproduces offroad's real double-install
-// (base and base^0x40); offroadt/pigout install once at their own single
-// base. Offsets within the window (0x00/0x01 GIN0/1, 0x09 mcont, 0x0A/0x0B
-// ay, 0x0C-0x0F scroll, 0x11 GIN3) are fixed by leland_master_input_r/
-// output_w itself and identical across all three games.
+// The relocated leland_master_input_r/output_w window (GIN0/1/3, mcont, ay, scroll) is
+// parameterised by io_base (MAME init_master_ports(mvram_base, io_base)); dual_io_window
+// reproduces Off-Road's double install (base and base^0x40). Offsets inside the window
+// are fixed by MAME: 0x00/0x01 GIN0/1, 0x09 mcont, 0x0A/0x0B ay, 0x0C-0x0F scroll,
+// 0x11 GIN3.
 wire [7:0] io_base_alt = io_base ^ 8'h40;
 function automatic io_win(input [7:0] offset);
 	io_win = (cpu_addr[7:0] == (io_base + offset)) ||
@@ -574,20 +406,13 @@ function automatic io_win(input [7:0] offset);
 endfunction
 
 wire io_mcont = io_win(8'h09);
-// AY8910 register-select (/OGIA, offset 0x0A) and data (/OGID, offset
-// 0x0B) writes -- see gfxbank output declaration above for why these
-// matter despite no audio synthesis being implemented.
+// AY-3-8910 register select (/OGIA, offset 0x0A) and data (/OGID, offset 0x0B) writes;
+// see gfxbank above.
 wire io_ay_addr = io_win(8'h0A);
 wire io_ay_data = io_win(8'h0B);
-// Real MAME master_redline_map_io (leland.cpp): 0xF2 = 80186 sound CPU
-// response_r/command_lo_w, 0xF4 = command_hi_w (write-only). Neither is
-// a palette register -- offroad has no palette-bank register at all;
-// real hardware only ever gates CRAM writes on/off via /MCONT bit1
-// (m_palette_view, see leland_master_output_w case 0x09 and cram_we's
-// mcont_r[1] gate below). Wired to the real sound board since WP10;
-// command_lo_w/command_hi_w feed leland_sound_board.sv's own command
-// latch, and response_r reads that module's real response_data output
-// (see this file's own response_data port comment near the top).
+// MAME master_redline_map_io: 0xF2 = 80186 response_r / command_lo_w, 0xF4 =
+// command_hi_w (write-only). Neither is a palette register; Off-Road has no palette-bank
+// register, only the /MCONT bit 1 palette view.
 wire io_cmd   = (cpu_addr[7:0] == 8'hF2);   // sound command_lo_w / response_r
 wire io_snd_hi = (cpu_addr[7:0] == 8'hF4);  // sound command_hi_w (write-only)
 
@@ -598,18 +423,13 @@ wire io_scroll_xhi = io_win(8'h0D);
 wire io_scroll_ylo = io_win(8'h0E);
 wire io_scroll_yhi = io_win(8'h0F);
 
-// Wheel dial encoder — MAME leland_m.cpp dial_compute_value(), reproduced
-// exactly: each read reports the direction (bit7) and magnitude (bits4:0,
-// clamped to 0x1F, accumulated mod 32) of wheel motion since the LAST read
-// of that same port, never an absolute angle. wheelN_now is computed
-// combinationally from the live p*_wheel input so the value returned on
-// THIS read already reflects it (matching MAME's synchronous read-and-update
-// call); wheelN_last_input/wheelN_result latch once per read so the next
-// read starts its delta from here. Latching is safe even if io_rd stays
-// asserted across more than one CE_6M tick within a single Z80 IN
-// instruction: p*_wheel won't have moved, so delta recomputes to 0 on any
-// repeat tick, same self-idempotent pattern as this module's other
-// once-per-instruction write strobes (see cmd_wr_lo_r etc. above).
+// Wheel dial encoder (MAME leland_m.cpp dial_compute_value): each read reports the
+// direction (bit 7) and magnitude (bits 4:0, clamped to 0x1F, accumulated mod 32) of
+// wheel motion since the last read of the same port, never an absolute angle.
+// wheelN_now is combinational from the live p*_wheel so the value returned on this read
+// already includes the motion; wheelN_last_input/wheelN_result latch once per read.
+// Latching on every CE_6M tick of a single IN is safe: the wheel has not moved, so a
+// repeat tick computes a delta of 0.
 function automatic [7:0] dial_compute(input [7:0] new_val, input [7:0] last_val, input [7:0] last_result);
 	reg signed [8:0] delta;
 	reg        [7:0] result;
@@ -712,10 +532,8 @@ wire [7:0] gin2_data = {~p2_joy[2],  // bit7: P2 down
                         ~p3_joy[4],  // bit1: P3 btn1
                         ~p3_joy[6]}; // bit0: start3
 
-// GIN3 (port io_base+0x11): EEPROM DO (bit0), VBlank (bit1), service
-// (bit2 for JOY4_DIGITAL/pigout, bit3 for WHEELS3_PEDALS3/offroad --
-// bit width of PORT_SERVICE_NO_TOGGLE differs between the two real
-// INPUT_PORTS blocks).
+// GIN3 (io_base+0x11): EEPROM DO (bit 0), VBlank (bit 1), service (bit 2 for Pig Out,
+// bit 3 for Off-Road/Track-Pak; the two INPUT_PORTS blocks differ).
 wire [7:0] gin3_wheels = {4'hF,
                           ~service,    // bit3: service (active-low)
                           1'b1,        // bit2: unused, float high
@@ -727,9 +545,8 @@ wire [7:0] gin3_joy4 = {5'h1F,       // bits7:3: unused, float high
                         eeprom_do};  // bit0: real 93C46 DO
 wire [7:0] gin3_data = (input_scheme == JOY4_DIGITAL) ? gin3_joy4 : gin3_wheels;
 
-// WP-L3 pigout: fixed IN4 @ raw 0x7F (install_read_port, outside the
-// io_base window entirely -- MAME init_pigout()). P1 full digital
-// joystick + 2 buttons + start (leland.cpp INPUT_PORTS_START(pigout) IN4).
+// Pig Out: fixed IN4 at raw 0x7F (MAME init_pigout install_read_port, outside the
+// io_base window): P1 joystick, two buttons and start.
 wire io_gin4 = in4_port_en && (cpu_addr[7:0] == 8'h7F);
 wire [7:0] gin4_data = {~p1_joy[6],  // bit7: start1
                         ~p1_joy[5],  // bit6: P1 btn2
@@ -741,46 +558,27 @@ wire [7:0] gin4_data = {~p1_joy[6],  // bit7: start1
                         1'b1};       // bit0: unused
 
 // I/O writes
-// Sound command latch (leland_a.cpp command_lo_w/command_hi_w): a
-// 16-bit register the Master writes, shadowed here and also forwarded
-// via cmd_wr_data/cmd_wr_lo/cmd_wr_hi to the real 80186 sound board's
-// own command latch (leland_sound_board.sv, since WP10). The shadow
-// regs below aren't read back on this side.
-reg  [7:0] sound_cmd_lo_r, sound_cmd_hi_r;
-// leland_a.cpp m_sound_response: retired 2026-07-18. Was a 4-iteration
-// echo stub (sequence-bit-echo, see docs/WP10_PROGRESS.md history)
-// standing in for the real 80186 response latch before the sound board
-// existed. Now wired to the real thing (response_data port, see its
-// own comment above) -- this WAS the actual seam WP10 always intended
-// to close here; retiring it is what unblocked the real ROM's
-// song-transition handshake (it posts a real response byte and waits
-// for the Z80 to see it, which the stub could never produce).
+// The sound command latch (leland_a.cpp command_lo_w/command_hi_w) lives in the sound
+// board; ports 0xF2/0xF4 are forwarded to it through cmd_wr_data/cmd_wr_lo/cmd_wr_hi.
 reg  [7:0] mcont_r;       // /MCONT shadow register
 
 reg [15:0] scroll_x_r, scroll_y_r;
 
-// Minimal AY8910 register-select + Port A (register 0x0E) shadow --
-// see gfxbank output declaration for why. ay_addr_r only needs to
-// hold a register index (0-15); reset to a value that is NOT 0x0E so
-// a stray/early io_ay_data write before the first io_ay_addr write
-// (shouldn't happen on real hardware, but costs nothing to guard)
-// can't accidentally latch garbage into gfxbank.
+// Minimal AY-3-8910 shadow: only register 0x0E (I/O port A) matters, because it drives
+// gfxbank. ay_addr_r resets to a value other than 0x0E so a stray data write before the
+// first address write cannot latch garbage.
 reg [3:0] ay_addr_r;
 reg [7:0] gfxbank_r;
 
-// WP10: sound-board control latch (see the sound_ctrl_data/sound_ctrl_wr
-// port declarations above for the real-hardware rationale). sound_ctrl_wr
-// is a plain 1-cycle strobe on every io_bank write, unconditional --
-// MAME's own `diff==0 -> return` early-out in leland_80186_control_w is
-// a software de-dup optimization, not real bus behavior; a real write
-// strobe fires every time regardless of whether the value changed, and
-// leland_sound_board.sv's control_wr handling is already idempotent.
+// Sound-board control latch: a one-cycle strobe on every io_bank write (port 0xF0 is
+// both the graphics bank register and the 80186 control register). MAME's diff==0
+// early-out is a software optimisation, not bus behaviour, and control_wr is idempotent.
 reg [7:0] sound_ctrl_data_r;
 reg       sound_ctrl_wr_r;
 assign sound_ctrl_data = sound_ctrl_data_r;
 assign sound_ctrl_wr   = sound_ctrl_wr_r;
 
-// WP10: sound command latch outputs (same registered-strobe convention).
+// Sound command latch outputs (registered strobes).
 reg [7:0] cmd_wr_data_r;
 reg       cmd_wr_lo_r, cmd_wr_hi_r;
 assign cmd_wr_data = {cmd_wr_data_r, cmd_wr_data_r};
@@ -791,8 +589,6 @@ always @(posedge clk_sys) begin
 	if (reset) begin
 		mcont_r          <= 8'h00;  // slave_reset_n=0: hold Slave in reset
 		bank_reg         <= 3'd0;
-		sound_cmd_lo_r   <= 8'h00;
-		sound_cmd_hi_r   <= 8'h00;
 		scroll_x_r       <= 16'd0;
 		scroll_y_r       <= 16'd0;
 		ay_addr_r        <= 4'hF;
@@ -813,12 +609,10 @@ always @(posedge clk_sys) begin
 				sound_ctrl_wr_r   <= 1'b1;
 			end
 			if (io_cmd) begin
-				sound_cmd_lo_r   <= cpu_dout;
 				cmd_wr_data_r    <= cpu_dout;
 				cmd_wr_lo_r      <= 1'b1;
 			end
 			if (io_snd_hi) begin
-				sound_cmd_hi_r <= cpu_dout;
 				cmd_wr_data_r  <= cpu_dout;
 				cmd_wr_hi_r    <= 1'b1;
 			end
@@ -839,38 +633,21 @@ assign scroll_x      = scroll_x_r;
 assign scroll_y      = scroll_y_r;
 assign gfxbank        = gfxbank_r;
 assign slave_reset_n = mcont_r[0];  // 1=run, 0=hold in reset
-// MAME leland_master_output_w: set_input_line(NMI, BIT(data,2) ? CLEAR_LINE : ASSERT_LINE)
-// i.e. bit2=1 -> NMI cleared (inactive), bit2=0 -> NMI asserted. slave_nmi_n
-// is active-low, so it must equal mcont_r[2] directly, NOT its inverse --
-// the previous `~mcont_r[2]` fired a spurious falling edge (NMI) on the tv80
-// core at the exact moment the Master released the Slave from reset (the
-// boot-time /MCONT write's bit2=1 was meant to clear/no-op the NMI line,
-// not assert it), derailing the Slave into its NMI vector instead of
-// continuing normal post-reset execution.
+// MAME: set_input_line(NMI, BIT(data,2) ? CLEAR_LINE : ASSERT_LINE), so with the
+// active-low slave_nmi_n the bit maps straight through. Inverting it fired a spurious
+// NMI when the master released the slave from reset.
 assign slave_nmi_n   = mcont_r[2]; // bit2=1 → clear NMI (active-low, no invert)
-// MAME leland_master_output_w: set_input_line(INPUT_LINE_IRQ0, BIT(data,3) ?
-// CLEAR_LINE : ASSERT_LINE) -- a held LEVEL, not a pulse. The Slave's INT
-// line stays asserted for as long as /MCONT bit3=0 and is only cleared when
-// the Master's firmware explicitly rewrites bit3=1; a masked/late EI on the
-// Slave must still observe the pending INT. Previously this was a one-cycle
-// pulse (slave_int_req_r, defaulting to 0 every cycle and only overridden
-// for the single io_mcont-write cycle), which could not reproduce that
-// held/repeating-INT behavior. mcont_r is already the registered /MCONT
-// shadow, so deriving the level directly from its bit3 is both simpler and
-// faithful to MAME.
+// /MCONT bit 3 is a held level (MAME: set_input_line(IRQ0, BIT(data,3) ? CLEAR : ASSERT)):
+// the slave INT stays asserted until the master rewrites the bit, so a late EI on the
+// slave still sees it.
 assign slave_int_req = ~mcont_r[3];
 // leland_master_output_w: m_eeprom->di_write(BIT(data,4)); clk_write(BIT(data,5)); cs_write(BIT(data,6));
 assign eeprom_di  = mcont_r[4];
 assign eeprom_clk = mcont_r[5];
 assign eeprom_cs  = mcont_r[6];
-// MAME leland_master_output_w: BIT(data,1) ? m_palette_view.select(0) :
-// m_palette_view.disable() -- real hardware drops any 0xF000-0xF3FF write
-// outright while the view is disabled (mcont_r[1]=0, the machine_reset()-
-// time default) rather than landing it in Color RAM regardless. Ungated, a
-// stray write during that window would permanently corrupt palette entries
-// the fg/bg pen concatenation (sor_video.sv's cram_addr = {fg_pen, bg_pen})
-// indexes into -- corrupting exactly the fg-nonzero rows that sprites/
-// portrait/flag pixels read.
+// MAME leland_master_output_w: /MCONT bit 1 selects the palette view. While it is off
+// the game's writes to 0xF000-0xF3FF are dropped; ungated, a stray write would corrupt
+// palette entries the video indexes.
 assign cram_we = mem_access & ~wr_n & in_cram & mcont_r[1];
 
 //------------------------------------------------------------------
@@ -882,12 +659,10 @@ always @(*) begin
 		if      (in_fixed || in_banked_lo || in_fixed_high) cpu_din = rom_data;
 		else if (in_battram)             cpu_din = battram_dout;
 		else if (in_wram)               cpu_din = wram_dout;
-		// Palette RAM is real, readable RAM while /MCONT bit 1 selects the
-		// palette view (MAME: m_palette_view[0](...).ram().w(palette write8)).
-		// The Test/service path fills the palette with a self-propagating LDIR
-		// (write seed to F000, then LDIR F000->F001) which READS it back; with
-		// reads returning 0xFF the whole palette became 0xFF (solid white).
-		// View disabled = nothing mapped there, keep the old 0xFF.
+			// Palette RAM is readable while /MCONT bit 1 selects the palette view (MAME:
+			// ram().w(palette write8)). The test path fills the palette with an LDIR that reads
+			// it back (write a seed to F000, then LDIR F000->F001), so reads must return the
+			// stored data. With the view off nothing is mapped there: 0xFF.
 		else if (in_cram)               cpu_din = mcont_r[1] ? cram_dout : 8'hFF;
 	end else if (io_rd) begin
 		if      (io_gin0) cpu_din = gin0_data;
@@ -901,13 +676,8 @@ always @(*) begin
 		else if (io_wheel1) cpu_din = wheel1_now;
 		else if (io_wheel2) cpu_din = wheel2_now;
 		else if (io_wheel3) cpu_din = wheel3_now;
-		// Port 0xF2 read = leland_80186_sound_device::response_r
-		// (leland_a.cpp). This is a SEPARATE register from the command
-		// latch written at the same address -- NOT an echo of the last
-		// write. 2026-07-18: now the real 80186 response latch
-		// (response_data port, see its own comment above) -- the
-		// sound_response_r echo stub is retired (its own declaration
-		// comment documents why it existed and what superseded it).
+			// Port 0xF2 read: the 80186 response latch (a separate register from the command
+			// latch that is written at the same address).
 		else if (io_cmd)  cpu_din = response_data;
 		else if (io_mvram) cpu_din = vram_rd_data;
 	end

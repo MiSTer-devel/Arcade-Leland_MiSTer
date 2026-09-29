@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
 //============================================================================
 //  Super Off Road — Leland CPU-side VRAM I/O port engine
 //
@@ -6,12 +9,9 @@
 //    - vram_port_w    (I/O ports 0x00-0x1F, mirrored at 0x40-0x5F)
 //    - vram_port_r    (same range)
 //
-//  This port is not just the Slave's pixel blitter: the Master has an
-//  identical port (leland_mvram_port, installed by init_master_ports at
-//  BOTH 0x00-0x1F and 0x40-0x5F for offroad), and the two CPUs
-//  communicate through a mailbox at the top of video RAM (>= 0xF000 --
-//  see the LOG_COMM traces in MAME's vram_port_r/w). Without the
-//  Master-side port the boot handshake can never complete.
+//  The master has an identical port (leland_mvram_port, installed at both 0x00-0x1F and
+//  0x40-0x5F for Off-Road); the two CPUs communicate through a mailbox at the top of video
+//  RAM (>= 0xF000).
 //
 //  Op encoding (from the port address):
 //    addr[2:0] = operation      addr[3] = auto-increment (+2)
@@ -37,22 +37,8 @@
 //  2-deep queue; sor_board's sequencer executes them against the single
 //  CPU-side VRAM BRAM port and returns read data via vp_pop/vp_rdata.
 //
-//  2026-07-12: the queue push logic used to be unconditional -- a new
-//  Z80 I/O cycle would overwrite q0/q1 even if the previous op hadn't
-//  been drained by sor_board's sequencer yet, on the documented
-//  assumption that "ops complete in <=6 clk_sys cycles; consecutive
-//  Z80 I/O cycles are >=24 clk_sys apart, so the queue is always
-//  drained before the next push" -- silently dropping data whenever
-//  that assumption didn't hold (observed on real hardware as scattered
-//  dropped characters during text rendering). Real Leland/arcade Z80
-//  hardware has no equivalent "silently drop and move on" behavior for
-//  a busy peripheral -- a bus cycle either completes or the CPU is
-//  held with /WAIT until it can. This module now follows that same
-//  convention (already used elsewhere in this design for SDRAM access,
-//  see sor_master.sv/sor_slave.sv's rom_stall/wait_n): `vp_stall`
-//  holds off completing the new op (and is expected to gate the
-//  parent's Z80 wait_n input) for as long as the queue isn't ready to
-//  accept it, instead of ever dropping it.
+//  A new I/O cycle is never dropped: vp_stall holds the parent's Z80 /WAIT for as long as
+//  the queue cannot accept the op (the same convention as the SDRAM rom_stall).
 //============================================================================
 
 module sor_vram_port #(parameter bit TRANS_EN = 1'b0)
@@ -73,12 +59,8 @@ module sor_vram_port #(parameter bit TRANS_EN = 1'b0)
 	// registered result of the last VRAM port read (feeds cpu_din)
 	output  [7:0] rd_data,
 
-	// High for as long as a new I/O cycle to this port can't be safely
-	// committed yet (the local queue hasn't been drained by sor_board's
-	// sequencer). The parent module (sor_master.sv/sor_slave.sv) is
-	// expected to OR this into the Z80 core's wait_n input, exactly
-	// like the existing rom_stall mechanism -- holds the CPU's bus
-	// cycle instead of ever dropping the op.
+	// High while a new I/O cycle cannot be committed yet; the parent ORs it into the Z80's
+	// wait_n.
 	output        vp_stall,
 
 	// elementary op stream to sor_board's VRAM sequencer (head of queue)
@@ -104,22 +86,9 @@ reg        q1_v;
 reg [15:0] q1_a;
 reg  [7:0] q1_d;
 
-// io_wr/io_rd stay asserted for multiple CE_6M ticks across one real
-// Z80 I/O machine cycle; each OUT/IN must be committed (queued) exactly
-// once. Previously a simple rising-edge detector (io_wr_prev); replaced
-// with a "already serviced this cycle" latch so committing can be held
-// off (not just delayed by one tick) until the queue is actually ready
-// to accept it -- the edge detector's `!io_wr_prev` could only ever be
-// true on the single tick right after io_wr rose, so it had no way to
-// retry later if the queue was still busy at that exact moment. This
-// commits on the first safe tick instead: immediately, if the queue is
-// already free (unchanged from the old behavior in the common case),
-// or as soon as it frees up, if not (see vp_stall below -- the CPU is
-// held with /WAIT for that whole window, so nothing is lost either way).
-// Only safe to push a new op once the previous one has been popped by
-// sor_board's sequencer (q0 clear) -- q1 is always pushed together with
-// q0 (op 1/2's second byte) in the same cycle, so checking q0_v alone
-// is sufficient.
+// io_wr/io_rd stay asserted across several CE_6M ticks of one Z80 I/O cycle; each OUT/IN
+// is committed exactly once, on the first tick where the queue is free. A new op is safe
+// once q0 has been popped (q1 is always pushed together with q0).
 wire queue_busy = q0_v;
 
 reg io_wr_done, io_rd_done;
@@ -161,9 +130,7 @@ always @(posedge clk_sys) begin
 		q0_v      <= 1'b0;
 		q1_v      <= 1'b0;
 	end else begin
-		// Pop first; pushes below take precedence if they coincide
-		// (cannot happen by timing -- see header -- but keeps the
-		// priority well-defined regardless).
+		// Pop first; pushes below take precedence if they coincide.
 		if (vp_pop) begin
 			if (q0_rd) rd_data_q <= vp_rdata;
 			q0_v  <= q1_v;
@@ -174,9 +141,7 @@ always @(posedge clk_sys) begin
 			q1_v  <= 1'b0;
 		end
 
-		// Memory-mapped address latch (video_addr_w). Level-gated on
-		// CE_6M is fine: rewriting the same value on consecutive ticks
-		// of one write cycle is idempotent (no side effects).
+		// Memory-mapped address latch (video_addr_w); idempotent across CE_6M ticks.
 		if (vidlat_wr) begin
 			if (!vidlat_hi)
 				addr_q <= {addr_q[15:9], cpu_dout, 1'b0};

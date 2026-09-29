@@ -2,10 +2,18 @@
 //  Super Off Road — MiSTer FPGA Core
 //  Leland / Tradewest 1989
 //
-//  This program is free software; you can redistribute it and/or modify it
-//  under the terms of the GNU General Public License as published by the Free
-//  Software Foundation; either version 2 of the License, or (at your option)
-//  any later version.
+//  Copyright (C) 2026 shimian5
+//
+//  This program is free software: you can redistribute it and/or modify it under the
+//  terms of the GNU General Public License as published by the Free Software
+//  Foundation, either version 3 of the License, or (at your option) any later version.
+//
+//  This program is distributed in the hope that it will be useful, but WITHOUT ANY
+//  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+//  PARTICULAR PURPOSE. See the GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License along with this
+//  program. If not, see <https://www.gnu.org/licenses/>.
 //============================================================================
 
 module emu
@@ -20,9 +28,8 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-// SDRAM pins are driven by sor_board (sdram controller inside)
-// DDR3 is shared by the fast ROM loader (sor_ddr_loader) and the CRT frame
-// retimer (sor_retimer); see the DDR3 mux below.
+// SDRAM pins are driven by sor_board. The DDR3 port is shared by sor_ddr_loader and
+// sor_retimer (see the DDR3 mux below).
 
 assign VGA_SL       = 0;
 assign VGA_F1       = 0;
@@ -32,11 +39,8 @@ assign HDMI_FREEZE  = 0;
 assign HDMI_BLACKOUT = 0;
 assign HDMI_BOB_DEINT = 0;
 
-// Signed 16-bit audio (WP10): leland_dac_mixer's mono output, via
-// sor_board's audio_out port, duplicated to both channels -- real
-// hardware's own mconfig is mono (leland_a.cpp SPEAKER(config,
-// "speaker").front_center()), so this is the complete, faithful signal,
-// not a placeholder stereo split.
+// Signed 16-bit mono audio from the sound board, duplicated to both channels (the real
+// board is mono).
 assign AUDIO_S   = 1;
 assign AUDIO_L   = audio_out;
 assign AUDIO_R   = audio_out;
@@ -58,8 +62,7 @@ assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 localparam CONF_STR = {
 	"SuperOffRoad;;",
 	"-;",
-	// Video settings live on their own page. (The old "Orientation" option was
-	// removed: nothing ever read status[2].)
+	// Video settings live on their own page.
 	"P1,Video Settings;",
 	"P1O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	// CRT retimer (status bits in use: 0,10,12:19,121:122).
@@ -81,15 +84,9 @@ localparam CONF_STR = {
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
-	// 4th button added for pigout's JOY4_DIGITAL scheme (bit7 = coin,
-	// see p1_joy/gin1_joy4/gin0_joy4 in rtl/sor_master.sv) -- unused/
-	// harmless for offroad/offroadt's WHEELS3_PEDALS3 scheme, which only
-	// consumes bits 4/5/6 (Nitro/Coin/Gas). Without a 4th declared
-	// button here, the OSD never exposes anything to map onto bit7, so
-	// pigout's coin input is permanently stuck low regardless of what
-	// the player binds -- confirmed as the root cause of "pigout
-	// controls don't work at all" on hardware (game never leaves
-	// attract mode because coin never registers).
+	// The 4th button ("Start") exists for Pig Out, whose input scheme maps J1 bits 4-7 to
+	// button 1, button 2, start and coin; without it there is nothing to bind to bit 7 and
+	// Pig Out never sees a coin. Off-Road uses bit 7 as "Menu Enter" (see svc_req).
 	"J1,Nitro,Coin,Gas,Start;",
 	"v,0;",
 	"V,v",`BUILD_DATE
@@ -112,8 +109,7 @@ wire        ioctl_wait;
 
 // Three-player digital buttons ([3]=coin, [2]=btn2, [1]=btn1, [0]=btn0)
 wire [31:0] joy1, joy2, joy3;
-// WP-L3: 4th player, JOY4_DIGITAL (pigout) only -- unused for the default
-// WHEELS3_PEDALS3 games.
+// 4th player (Pig Out only)
 wire [31:0] joy4;
 // Analog: signed -127..+127, [15:8]=Y (unused -- gas is digital, see p1_pedal
 // below), [7:0]=X (one of three steering inputs combined by steering_input.sv)
@@ -161,16 +157,12 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 );
 
 //----------------------------------------------------------------
-// Clock  (PLL: 50 MHz → 48 MHz system clock)
-// 48 MHz gives clean dividers:
-//   Z80  @ 6 MHz  → CE every 8 cycles
-//   80186@ 8 MHz  → CE every 6 cycles
-//   Pixel@ ~7.16MHz → fractional phase accumulator
+// Clock: the PLL turns 50 MHz into a 48 MHz system clock, which divides cleanly for
+// the Z80 (6 MHz, CE every 8 cycles) and the 80186 (8 MHz, CE every 6); the pixel clock
+// comes from a phase accumulator.
 //----------------------------------------------------------------
 wire clk_sys;
-wire clk_sdram; // phase-shifted 48 MHz PLL output feeding SDRAM_CLK (docs/sdram_plan.md
-                 // Section 3a; WP-L3's 96MHz dedicated-clock/CDC-bridge scheme was
-                 // reverted 2026-07-22 -- see rtl/pll/pll_0002.v's outclk_1 comment)
+wire clk_sdram; // phase-shifted 48 MHz PLL output for SDRAM_CLK
 wire pll_locked;
 
 pll pll
@@ -231,17 +223,14 @@ wire sdram_init = RESET | ~pll_locked;
 //----------------------------------------------------------------
 wire       ce_pix;
 wire       HBlank, HSync, VBlank, VSync;
-wire [3:0] pen;         // 4-bit pixel pen value from video RAM
 wire [23:0] rgb;        // 24-bit colour after palette lookup
 
-wire signed [15:0] audio_out; // WP10: leland_dac_mixer's mono output
+wire signed [15:0] audio_out; // mono, from the sound board's DAC mixer
 
 //----------------------------------------------------------------
-// Steering — combine analog stick, digital d-pad, and spinner into the
-// free-running "virtual dial" position sor_board's p*_wheel ports expect
-// (see steering_input.sv and sor_master.sv's wheel port comment for why
-// this can't just be the raw analog stick value any more: the real wheel
-// is a free-spinning rotary encoder, not an absolute position).
+// Steering: analog stick, d-pad and spinner are combined into the free-running virtual
+// dial that sor_board's p*_wheel ports expect (the real wheel is a free-spinning
+// encoder, see sor_master.sv).
 //----------------------------------------------------------------
 reg vblank_d;
 always @(posedge clk_sys) vblank_d <= VBlank;
@@ -279,22 +268,15 @@ steering_input steer3
 	.wheel_pos(p3_wheel_pos)
 );
 
-// Gas — MiSTer has no analog-trigger support, so this is a plain digital
-// button (3rd J1 entry, "Gas") mapped like Nitro/Coin, driving the pedal
-// straight to its two real endpoints (0=released, 255=full) rather than
-// through the now-unused analog Y axis (WP-controls: that Y-axis pedal
-// wiring was dead code before this change anyway -- see sor_board.sv's
-// p1_pedal port comment).
+// Gas: MiSTer has no analog trigger, so it is a digital button (3rd J1 entry) driving the
+// pedal to its two endpoints (0 = released, 255 = full).
 wire [7:0] p1_gas = joy1[6] ? 8'hFF : 8'h00;
 wire [7:0] p2_gas = joy2[6] ? 8'hFF : 8'h00;
 wire [7:0] p3_gas = joy3[6] ? 8'hFF : 8'h00;
 
-// WP-L3: 4-player digital joystick for JOY4_DIGITAL (pigout) -- direct
-// passthrough of MiSTer's standard joystick vector low byte, which
-// already matches sor_board's p*_joy bit convention exactly ([0]=right
-// [1]=left [2]=down [3]=up [4]=btn1 [5]=btn2), with the two spare fire
-// bits repurposed as start/coin, same established pattern as the p1_btn
-// nitro/coin remap above.
+// 4-player digital joystick for Pig Out: MiSTer's standard joystick vector low byte
+// already matches sor_board's p*_joy layout ([0]=right [1]=left [2]=down [3]=up
+// [4]=btn1 [5]=btn2), with the two spare fire bits used as start and coin.
 wire [7:0] p1_joy = joy1[7:0];
 wire [7:0] p2_joy = joy2[7:0];
 wire [7:0] p3_joy = joy3[7:0];
@@ -303,19 +285,16 @@ wire [7:0] p4_joy = joy4[7:0];
 //----------------------------------------------------------------
 // Service / operator menu
 //
-// The OSD "Service Menu" action (status[4], a trigger) fires one timed press
-// of the Test switch. Per the manual (p.17) the Bookkeeping/Diagnostics menu
-// is entered "with the Blue Nitro button depressed, press the Test button";
-// Red Nitro (P1) then selects and Blue Nitro (P3's Nitro) enters. Verified
-// against MAME for Off-Road. So during the press:
-//   * Test (service) and P3's Nitro are held together,
-//   * P1 Start is held for the whole window (Pig Out's documented sequence is
-//     "P1 Start, then Service"; untested on hardware),
-// and afterwards P1's "Menu Enter" button (J1 button 4, unused by the
-// Off-Road games) acts as Blue Nitro so a single controller can "enter".
-// The press is ~250 ms: long enough for the game to see it, short enough
-// that Blue Nitro is released before the menu is drawn (otherwise it would
-// immediately "enter" the first item). Only p3_btn/p1_joy(bit 6) are touched.
+// The OSD "Service Menu" action (status[4], a trigger) fires one timed press of the Test
+// switch. Off-Road (manual p.17) enters its Bookkeeping/Diagnostics menu with Blue Nitro
+// (P3's Nitro) held while Test is pressed; Pig Out needs Service plus P1 Start. So during
+// the press Test and P3's Nitro are held together for the last 250 ms, and P1 Start is
+// held for the whole 300 ms window.
+//
+// Inside the Off-Road menus P1's "Menu Enter" button (J1 bit 7, unused by the game)
+// acts as Blue Nitro, so one controller can select (Nitro) and enter. The press is short
+// enough that Blue Nitro is released before the menu is drawn; otherwise it would enter
+// the first item. Only p3_btn and p1_joy[6] are touched.
 //----------------------------------------------------------------
 localparam [24:0] SVC_WINDOW = 25'd14_400_000;        // 300 ms at 48 MHz
 localparam [24:0] SVC_TEST_AT = 25'd12_000_000;       // Test + Blue Nitro for the last 250 ms
@@ -371,26 +350,12 @@ sor_board board
 
 	// Player inputs (digital buttons + analog)
 	//
-	// sor_board/sor_master's p1_btn[1]=nitro, p1_btn[3]=coin (that
-	// internal meaning is validated against MAME's leland_m.cpp GIN0/
-	// GIN1 bit layout, unchanged). What changed is which PHYSICAL
-	// input feeds those bits: joystick_0[3:0] are MiSTer's standard
-	// D-pad bits, auto-mapped with no CONF_STR label and no entry in
-	// the OSD's "define buttons" UI -- there was no way for a user to
-	// discover or remap Coin at all (confirmed: sticky I/O-read probes
-	// on real hardware showed the Master CPU polling both the nitro
-	// and coin ports in what turned out to be the normal, correct
-	// attract-mode "wait for coin" idle loop, not a hang -- but coin
-	// had no reachable input). Sourced from joystick_0[5:4] instead,
-	// the standard first-two-named-buttons position (see the "J1,..."
-	// CONF_STR line above), so Nitro/Coin get real, labeled, mappable
-	// buttons like every other MiSTer arcade core.
+	// Nitro and Coin are J1 buttons 1-2 (joystick bits 4-5): p1_btn[1] is nitro and
+	// p1_btn[3] is coin, matching MAME's GIN0/GIN1 bit layout.
 	.p1_btn({joy1[5], 1'b0, joy1[4], 1'b0}),
 	.p2_btn({joy2[5], 1'b0, joy2[4], 1'b0}),
 	.p3_btn({joy3[5], 1'b0, p3_nitro, 1'b0}),
-	// Wheel: free-running virtual dial position from steering_input.sv
-	// (analog stick + digital d-pad + spinner already combined -- see the
-	// "Steering" block above and sor_master.sv's p1_wheel port comment).
+	// Wheel: free-running virtual dial from steering_input.sv.
 	.p1_wheel(p1_wheel_pos),
 	.p2_wheel(p2_wheel_pos),
 	.p3_wheel(p3_wheel_pos),
@@ -399,17 +364,14 @@ sor_board board
 	.p2_pedal(p2_gas),
 	.p3_pedal(p3_gas),
 
-	// WP-L3: 4-player digital joystick (JOY4_DIGITAL/pigout only).
+	// 4-player digital joystick (Pig Out only).
 	.p1_joy(p1_joy | {1'b0, svc_start, 6'd0}), // + P1 Start held during the Service Menu press (Pig Out)
 	.p2_joy(p2_joy),
 	.p3_joy(p3_joy),
 	.p4_joy(p4_joy),
 
-	// Service / free play from OSD
+	// Service (Test) switch, driven by the OSD "Service Menu" action
 	.service(svc_req),
-
-	// debug overlay removed from the OSD (rtl/sor_video.sv keeps the dormant render path)
-	.show_overlay(1'b0),
 
 	.audio_out(audio_out)
 );
@@ -417,16 +379,15 @@ sor_board board
 //----------------------------------------------------------------
 // Video output to MiSTer framework
 //----------------------------------------------------------------
-// CRT retimer (rtl/sor_retimer.sv): when status[12] is clear (default) the output is
-// re-generated at NTSC 240p (15.73 kHz / 60.03 Hz) from a frame buffer while
-// the game keeps running at its native 65.95 Hz. When set to Native, the game's own
-// timing goes straight to the framework as before.
+// CRT retimer (rtl/sor_retimer.sv): by default the output is regenerated at NTSC 240p
+// (15.73 kHz / 60.03 Hz) from a frame buffer while the game keeps running at its native
+// 65.95 Hz. With Video Timing set to Native the game's own timing goes straight to the
+// framework.
 wire        rt_ce, rt_hb, rt_hs, rt_vb, rt_vs;
 wire [23:0] rt_rgb;
 wire [28:0] rt_ddr_addr;
 wire [63:0] rt_ddr_din;
 wire        rt_ddr_rd, rt_ddr_we;
-wire        rt_wf_overflow;
 
 sor_retimer retimer
 (
@@ -457,12 +418,12 @@ sor_retimer retimer
 	.DDRAM_DIN(rt_ddr_din),
 	.DDRAM_BE(),
 	.DDRAM_WE(rt_ddr_we),
-	.wf_overflow(rt_wf_overflow)
+	.wf_overflow()
 );
 
-// DDR3 bus: the ROM loader owns it while replaying (the retimer is stopped
-// for that whole time), the retimer otherwise. Both only use 1-beat bursts
-// with all byte enables.
+// DDR3 bus: the ROM loader owns it while replaying (the retimer is stopped for that
+// whole time), the retimer otherwise. Both only use single-beat bursts with all byte
+// enables.
 assign DDRAM_CLK      = clk_sys;
 assign DDRAM_BURSTCNT = 8'd1;
 assign DDRAM_BE       = 8'hFF;

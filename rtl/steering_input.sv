@@ -1,15 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
 //============================================================================
 //  steering_input — combines MiSTer's three steering control schemes
 //  (analog joystick, digital d-pad, spinner) into one free-running 8-bit
 //  "virtual dial" position.
 //
-//  Real Super Off-Road hardware (and MAME's leland_m.cpp dial_compute_value,
-//  see sor_master.sv's wheel I/O port comment) never reads an absolute wheel
-//  angle -- the cabinet's wheel is a genuine free-spinning rotary encoder
-//  (MAME: IPT_DIAL, no PORT_MINMAX). Only the CHANGE between two reads ever
-//  matters. So all three MiSTer input styles are simply added into the same
-//  free-running mod-256 accumulator every video frame, matching that
-//  abstraction exactly and letting a player freely mix input methods.
+//  The cabinet's wheel is a free-spinning rotary encoder (MAME IPT_DIAL): only the change
+//  between two reads matters. All three input styles are added into one free-running
+//  mod-256 accumulator, so they can be mixed freely.
 //============================================================================
 
 module steering_input
@@ -27,10 +26,8 @@ module steering_input
 	output       [7:0] wheel_pos       // free-running accumulator -> sor_board's p*_wheel port
 );
 
-	// Ramp rate: full accel/decel over ~8 frames (~0.13s @ 60Hz) -- responsive
-	// on a d-pad without feeling twitchy. Deflection/velocity scaled down
-	// (>>>3) before being added per-frame so a held d-pad or full analog
-	// deflection both reach a comparable top turn rate. All tunable.
+	// Ramp: full accel/decel over ~8 frames. Deflection is scaled down (>>>3) so a held
+	// d-pad and full analog deflection reach a comparable top turn rate.
 	localparam signed [8:0] RAMP_STEP = 9'sd16;
 	localparam signed [8:0] VEL_MAX   = 9'sd16;
 	localparam signed [8:0] POS_MAX   = 9'sd127;
@@ -63,9 +60,7 @@ module steering_input
 	reg       spinner_toggle_d;
 	reg [7:0] accum;
 
-	// Mod-256 free-running add: correct wraparound "wheel" semantics whether
-	// the byte being added is interpreted as signed or unsigned, so plain
-	// 8-bit addition is used throughout (no need to sign-extend before adding).
+	// Mod-256 add: wraps correctly whether the operand is signed or unsigned.
 	wire [7:0] spin_add = (spinner[8] != spinner_toggle_d) ? spinner[7:0] : 8'h00;
 	wire [7:0] frame_add = ce_frame ? (dpad_contribution[7:0] + analog_contribution[7:0]) : 8'h00;
 

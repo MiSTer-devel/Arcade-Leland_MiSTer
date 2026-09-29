@@ -1141,7 +1141,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 19 -- Fable-review-suggested probe: the link-byte theory
+// Follow-up 19 -- review-suggested probe: the link-byte theory
 // (Follow-up 18/18b) was ruled out on both sides (E8F9/EAF9 stay 0xFF in
 // both RTL and MAME), but a separate, still-unexplained WRAM content
 // divergence exists at 0xE900 (docs/SESSION_2026-07-14.md): MAME's real
@@ -1287,7 +1287,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 16 -- stale VRAM-port read checker, per the Fable review's
+// Follow-up 16 -- stale VRAM-port read checker, per the review's
 // hypothesis: sor_vram_port.sv's vp_stall drops (releasing the Z80's
 // /WAIT) as soon as io_rd_done latches on rd_commit, which can happen
 // BEFORE sor_board's sequencer actually pops the queued read op and

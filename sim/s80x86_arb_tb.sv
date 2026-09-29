@@ -124,7 +124,7 @@ reg [7:0] rom [0:1048575];
 string rom_hex_path;
 initial begin
     if (!$value$plusargs("ROM_HEX=%s", rom_hex_path))
-        rom_hex_path = "C:/Users/matt/AppData/Local/Temp/claude/C--MiSTerDev/0e467b5f-5559-4e23-93bb-014dc0958f72/scratchpad/wp0_rom/audiocpu_offroad.hex";
+        rom_hex_path = "audiocpu_offroad.hex";
     $readmemh(rom_hex_path, rom);
     for (int i = 0; i < 16384; i++) ram[i] = 8'h00;
 end

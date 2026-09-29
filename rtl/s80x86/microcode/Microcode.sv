@@ -263,32 +263,13 @@ always_ff @(posedge clk or posedge reset)
     else if (starting_instruction)
         trap_flag_set <= tf;
 
-// 2026-07-18 (real-hardware "80186 confirmed alive, stuck forever at a
-// real ROM's own `sti; nop; cli` interrupt-enable idiom" investigation,
-// docs/WP10_PROGRESS.md / docs/WP10_AUDIO_ISSUE_SYNOPSIS.md): priority
-// between the set and clear branches swapped, per a Fable
-// recommendation independently cross-checked against a cycle-accurate
-// ModelSim trace of the exact failing sequence (see WP10_PROGRESS.md
-// for the full trace). Root cause: on a back-to-back dispatch (the
-// next instruction already sitting in the prefetch fifo, no wait
-// cycle), `starting_instruction` and `current.ext_int_inhibit` can be
-// true on the SAME cycle -- the old set-checked-first ordering let the
-// set win every time in this case, so the register-based inhibit
-// (meant to protect only the ONE instruction immediately after an
-// inhibiting one, e.g. NOP after STI) never actually cleared in time
-// for the *following* instruction's own dispatch -- and if THAT
-// instruction also sets its own `current.ext_int_inhibit` (e.g. CLI,
-// which legitimately needs to protect its own dispatch too), the two
-// inhibit sources hand off with zero gap and a pending interrupt can
-// never be taken for the entire `sti; nop; cli` sequence, no matter
-// how long it's pending. Swapping the priority so a genuine
-// instruction-start clears the register before any new set can
-// re-arm it closes this gap. This does NOT weaken STI/CLI's own
-// mid-dispatch protection (`current.ext_int_inhibit` still blocks
-// `take_irq`/`take_nmi`/`do_single_step` combinationally while that
-// exact word is `current`, unchanged by this edit) -- it only affects
-// how promptly the REGISTERED inhibit from the *previous* instruction
-// releases once the next one has genuinely started.
+// The clear branch takes priority over the set branch. On a back-to-back dispatch
+// `starting_instruction` and `current.ext_int_inhibit` can be true on the same cycle; with
+// set first, the registered inhibit (meant to protect only the one instruction after an
+// inhibiting one, e.g. the NOP after STI) never cleared in time for the following
+// instruction. If that one also inhibits (e.g. CLI), the two hand off with no gap and a
+// pending interrupt is never taken during a `sti; nop; cli` sequence. `current.ext_int_inhibit`
+// still blocks take_irq/take_nmi/do_single_step combinationally while that word is current.
 always_ff @(posedge clk or posedge reset)
     if (reset)
         ext_int_inhibit <= 1'b0;

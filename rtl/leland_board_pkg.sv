@@ -1,18 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
 //============================================================================
-//  Leland-family board package
-//
-//  Shared by all Leland-derived cores (WP-L1, docs/planning_leland_multiboard.md
-//  section 3/4): board/input enums, the 16-byte MRA header layout, the
-//  canonical SDRAM region layout (sized to the family maxima), and the
-//  per-game configuration table. offroad is currently the table's only row.
+//  Leland-family board package: board/input enums, the 16-byte MRA header layout, the
+//  canonical SDRAM region layout (sized to the family maxima) and the per-game
+//  configuration table (Super Off-Road, Track-Pak, Pig Out).
 //============================================================================
 
 package leland_board_pkg;
 
 	//--------------------------------------------------------------
-	// board_class: selects structural muxes (sound board, video
-	// pipeline, EEPROM model, slave bank scheme). Values match the MRA
-	// header's byte 2 encoding exactly (plan section 3).
+	// board_class: selects structural muxes (sound board, video pipeline, EEPROM model,
+	// slave bank scheme); matches header byte 2.
 	//--------------------------------------------------------------
 	typedef enum logic [7:0] {
 		GEN1          = 8'd0,
@@ -38,8 +37,7 @@ package leland_board_pkg;
 	} input_scheme_e;
 
 	//--------------------------------------------------------------
-	// 16-byte MRA header (plan section 3), prepended to the index=0
-	// download stream ahead of all ROM content.
+	// 16-byte MRA header, prepended to the index=0 download stream ahead of all ROM
 	//--------------------------------------------------------------
 	localparam int HDR_LEN = 16;
 
@@ -62,11 +60,8 @@ package leland_board_pkg;
 	localparam int FLAG_IN4_PORT       = 4; // fixed IN4 @ raw 0x7F (pigout 4th-player port)
 
 	//--------------------------------------------------------------
-	// Canonical SDRAM layout (post-header byte addresses, plan
-	// section 4). Sized to the whole Leland family's maxima; any one
-	// game/board pads the unused tail of its region with zero fill in
-	// the MRA. All bases/sizes are byte addresses within the 27-bit
-	// ioctl/SDRAM address space used throughout this core.
+	// Canonical SDRAM layout (post-header byte addresses), sized to the whole Leland
+	// family's maxima; a game pads the unused tail of its region with zero fill in the MRA.
 	//--------------------------------------------------------------
 	localparam logic [26:0] ADDR_MASTER_BASE = 27'h000000; // master ROM
 	localparam logic [26:0] MASTER_MAX       = 27'h100000; // 1 MB reserved
@@ -80,31 +75,17 @@ package leland_board_pkg;
 	localparam logic [26:0] ADDR_GFX_BASE    = 27'h400000; // bg_gfx
 	localparam logic [26:0] GFX_MAX          = 27'h200000; // 2 MB reserved
 
-	// Wider-reads bandwidth optimization (2026-07-22): a repacked COPY of
-	// bg_gfx planes 0+1, interleaved into 16-bit words (word i = {plane1
-	// [i], plane0[i]}), built once at boot from the real ADDR_GFX_BASE
-	// content (which stays untouched, still exactly matching the MRA/
-	// MAME ROM_LOAD layout -- this is a derived cache, not a relayout).
-	// Lets sor_video.sv's fetch FSM read both bitplane bytes needed per
-	// tile-row in a single 16-bit SDRAM transaction instead of two 8-bit
-	// ones. Sized 2*0x8000=0x10000 bytes (one 16-bit word per byte-offset
-	// within a single 32KB plane); placed right after the 3 raw planes
-	// (0x18000 bytes) within GFX_BASE's existing 2MB reservation, nowhere
-	// near ADDR_PROM_BASE.
+	// Derived copy of bg_gfx planes 0+1 interleaved into 16-bit words (word i =
+	// {plane1[i], plane0[i]}), built once at boot by the repack FSM in sor_board.sv from
+	// the untouched ADDR_GFX_BASE content. It sits after the 3 raw planes (0x18000 bytes)
+	// inside GFX_BASE's reservation.
 	localparam logic [26:0] ADDR_GFXW_BASE   = ADDR_GFX_BASE + 27'h018000;
 
-	// WP-M8 (2026-07-24, docs/planning_sdram_multichannel.md §12 "Video
-	// re-encoding"): a further derived cache alongside ADDR_GFXW_BASE --
-	// all 3 bg_gfx planes for one tile-row packed into one 4-byte-aligned,
-	// burst-friendly entry: word0 = {plane1[i], plane0[i]} (identical
-	// content to ADDR_GFXW_BASE's entry i), word1 = {8'h00, plane2[i]}.
-	// Same 15-bit index i = tile_code*8+riy as ADDR_GFXW_BASE/gfx01_idx.
-	// Built by the same boot-time repack FSM (rtl/sor_board.sv) that
-	// builds ADDR_GFXW_BASE, purely additive -- ADDR_GFXW_BASE stays
-	// exactly as before for anything still reading it. Sized 4*0x8000 =
-	// 0x20000 bytes; placed right after ADDR_GFXW_BASE's 0x10000-byte
-	// region, still nowhere near ADDR_PROM_BASE (2MB reserved for GFX_BASE
-	// total, only 0x48000 used so far).
+	// Derived copy holding all 3 planes of a tile row in one 4-byte, burst-friendly entry:
+	// word0 = {plane1[i], plane0[i]}, word1 = {8'h00, plane2[i]}, with the same index
+	// i = tile_code*8 + riy as ADDR_GFXW_BASE. sor_video reads it with one 2-word burst.
+	// Built by the same repack FSM; 4 * 0x8000 = 0x20000 bytes, right after
+	// ADDR_GFXW_BASE's region.
 	localparam logic [26:0] ADDR_GFXROW_BASE = ADDR_GFXW_BASE + 27'h010000;
 
 	localparam logic [26:0] ADDR_PROM_BASE   = 27'h600000; // bg_prom (gen1-3)
@@ -118,30 +99,19 @@ package leland_board_pkg;
 
 	localparam logic [26:0] ADDR_EEPROM_BASE = 27'h700000; // EEPROM default image
 	localparam logic [26:0] EEPROM_MAX       = 27'h001000; // 4 KB reserved
-	// NOTE: EEPROM default-image *loading* is deferred past WP-L1 (scope
-	// note in the WP-L1 task) -- this constant reserves the address space
-	// only; no load path is wired to it yet.
 
 	//--------------------------------------------------------------
-	// Multi-bank open-row controller (WP-M): region → bank mapping.
-	//
-	// Each gameplay read client is pinned to one physical SDRAM bank so
-	// their open rows never evict each other:
-	//   bank 0  master Z80 code ROM   (ADDR_MASTER_BASE .. ADDR_SLAVE_BASE)
-	//   bank 1  slave  Z80 code ROM   (ADDR_SLAVE_BASE  .. ADDR_SOUND_BASE)
-	//   bank 2  80186  sound code ROM  (ADDR_SOUND_BASE  .. ADDR_GFX_BASE)
-	//   bank 3  bg gfx / prom / gfxw  (ADDR_GFX_BASE    .. )
-	//
-	// Both functions accept a 27-bit ioctl/SDRAM byte address and return
-	// the 2-bit bank index or the 23-bit region-relative offset within
-	// that bank. The write channel uses these to derive bank_sel and the
-	// relative address for sdram_banked, mirroring what each read client
-	// already provides via its own fixed bank assignment. Keeping both
-	// paths here (rather than in sor_board.sv) ensures a single source of
-	// truth — if the region layout changes, only this file changes.
-	//
-	// Each region fits comfortably in one 8 MB bank (23-bit offset):
-	//   master 1 MB, slave 2 MB, sound 1 MB, gfx+prom 2 MB+  all < 8 MB.
+	// Region -> bank mapping for the multi-bank open-row controller. Each gameplay read
+	// client is pinned to one physical SDRAM bank so their open rows never evict each
+	// other:
+	//   bank 0  master Z80 ROM   (ADDR_MASTER_BASE .. ADDR_SLAVE_BASE)
+	//   bank 1  slave  Z80 ROM   (ADDR_SLAVE_BASE  .. ADDR_SOUND_BASE)
+	//   bank 2  80186 sound ROM  (ADDR_SOUND_BASE  .. ADDR_GFX_BASE)
+	//   bank 3  gfx / prom       (ADDR_GFX_BASE    .. )
+	// Both functions take a 27-bit byte address and return the bank index or the
+	// region-relative offset inside that bank; the write channel uses them to derive
+	// bank_sel and the relative address. Every region fits in one 8 MB bank (23-bit
+	// offset).
 	//--------------------------------------------------------------
 	function automatic [1:0] sdram_addr_to_bank(input logic [26:0] addr);
 		if      (addr < ADDR_SLAVE_BASE)  sdram_addr_to_bank = 2'd0;
@@ -160,12 +130,9 @@ package leland_board_pkg;
 	endfunction
 
 	//--------------------------------------------------------------
-	// Per-game configuration table. game_id (header byte 3) indexes
-	// this array. WP-L3 adds offroadt/pigout alongside offroad; all
-	// three share the exact same master/slave bank tables (verified
-	// against MAME leland_m.cpp's offroad_bankswitch, which is
-	// explicitly commented as shared by all three games) -- only the
-	// I/O port bases, input scheme, and flags differ per row.
+	// Per-game configuration table, indexed by game_id (header byte 3). All three games
+	// share the same master/slave bank tables (MAME's offroad_bankswitch is shared); only
+	// the I/O bases, input scheme and flags differ per row.
 	//--------------------------------------------------------------
 	typedef struct packed {
 		board_class_e   board_class;

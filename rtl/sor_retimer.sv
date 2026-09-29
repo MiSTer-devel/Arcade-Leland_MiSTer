@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
 //============================================================================
 //  Super Off Road -- CRT frame retimer (DDR3 frame store, photometric V size)
 //
@@ -8,9 +11,8 @@
 //  Write side : samples the game's video (rgb + HBlank/VBlank) on the game's
 //               ce_pix and stores each active pixel as its 8-bit BGR 2-3-3
 //               colour (the palette byte layout, see sor_video.sv col_r/g/b:
-//               the 24-bit expansion is exactly reversible from 8 bits,
-//               including the debug overlay's black/white). Eight pixels are
-//               packed into one 64-bit word and written to DDR3.
+//               the 24-bit expansion is exactly reversible from 8 bits). Eight
+//               pixels are packed into one 64-bit word and written to DDR3.
 //  Read side  : independent generator, 6.857 MHz (clk_sys/7), 436x262 =
 //               3052 clk/line = 15.727 kHz / 60.03 Hz.
 //
@@ -88,7 +90,7 @@ module sor_retimer
 	output      [7:0] DDRAM_BE,
 	output reg        DDRAM_WE,
 
-	// debug: sticky, set if the write FIFO ever overflowed
+	// sticky, set if the write FIFO ever overflowed
 	output reg        wf_overflow
 );
 

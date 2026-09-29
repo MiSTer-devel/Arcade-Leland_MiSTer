@@ -1,37 +1,20 @@
-// rom_line_cache.sv — WP-M7 (docs/planning_sdram_multichannel.md §12): a
-// direct-mapped, read-only line cache dropped in front of one of the
-// sequential-code SDRAM read clients (rd0/rd1/rd3 — master Z80, slave Z80,
-// 80186 sound CPU). Code ROM is immutable for the whole session, so this
-// cache needs no invalidation/coherency logic at all: a line is valid
-// forever once filled.
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
+// rom_line_cache: a direct-mapped, read-only line cache in front of one of the
+// sequential-code SDRAM read clients (master Z80, slave Z80, 80186 sound CPU). Code ROM
+// is immutable for the session, so no invalidation is needed: a line is valid forever
+// once filled.
 //
-// This replaces the old per-client "ack_hold" wrapper (the pattern still
-// visible in git history for master_ack_hold/slave_ack_hold/sound_ack_hold
-// in sor_board.sv) — this module *is* that wrapper, plus a cache in front
-// of it. On a cache hit the client is served in ~2 clk_sys cycles with
-// zero SDRAM traffic; on a miss it fills an entire LINE_WORDS-word line via
-// LINE_WORDS sequential single-word SDRAM transactions (through the normal
-// sdram_rdN_req/ack client protocol — NOT sdram_banked's WP-M6 burst
-// support), then serves the requested byte.
+// A hit is served in ~2 clk_sys cycles with no SDRAM traffic. A miss fills a whole line
+// of LINE_WORDS bytes with LINE_WORDS sequential single-word SDRAM transactions through
+// the normal sdram_rdN_req/ack protocol, then serves the requested byte. Burst refill is
+// deliberately not used: a burst test found a one-word capture anomaly that was never
+// ruled out at the client level.
 //
-// Deliberately NOT using WP-M6 burst reads for the refill: per
-// docs/planning_sdram_multichannel.md's WP-M6 session notes, a synthetic
-// burst unit test found a one-word capture anomaly when driving
-// sdram_banked's raw ports directly, and it was never confirmed whether
-// that anomaly is reachable through the client-level (sdram_rdN_req/ack)
-// protocol this module actually uses. Sequential single-word fills sidestep
-// that open risk entirely while still collapsing LINE_WORDS client fetches
-// into LINE_WORDS SDRAM fetches instead of the other way around across
-// multiple cache hits — the plan explicitly allows "start small, grow only
-// if hit-rate telemetry justifies it," and matching burst-length lines is
-// a follow-on once burst is trusted end-to-end, not a prerequisite.
-//
-// M10K inference follows the recipe hardware-confirmed by sor_video.sv's
-// gfxcache_mem: a single packed array (line_mem), one registered read port,
-// one synchronous write port, and a sequential (not one-shot) reset-clear
-// spread over the first 2**INDEX_BITS cycles of reset. See that module's
-// own comment for why a one-shot clear or per-entry combinational arrays
-// fall back to ALMs instead of block RAM.
+// Block RAM inference: one packed array (line_mem) with a registered read port, a
+// synchronous write port and a sequential clear over the first 2**INDEX_BITS cycles of
+// reset (a one-shot clear or per-entry arrays would fall back to ALMs).
 module rom_line_cache #(
 	parameter [26:0] BASE        = 27'h0,  // flat SDRAM byte base for this client's ROM region
 	parameter        ADDR_WIDTH  = 18,     // client-relative ROM address width (bits)
@@ -52,11 +35,7 @@ module rom_line_cache #(
 	output                      sd_req,
 	output     [24:0]           sd_addr,
 	input      [7:0]            sd_data,
-	input                       sd_ack,
-
-	// Diagnostics: one-cycle pulses, accumulate externally for a hit-rate box
-	output reg                  access_pulse,  // a cpu_req completed (hit or miss) this cycle
-	output reg                  hit_pulse      // that completion was a cache hit
+	input                       sd_ack
 );
 
 localparam TAG_BITS   = ADDR_WIDTH - INDEX_BITS - LINE_BITS;
@@ -158,8 +137,6 @@ reg cache_ack_hold;
 always @(posedge clk_sys) begin
 	cpu_req_d    <= cpu_req;
 	cache_ack    <= 1'b0;
-	access_pulse <= 1'b0;
-	hit_pulse    <= 1'b0;
 	mem_wr_en    <= 1'b0;
 	fill_start   <= 1'b0;
 
@@ -174,8 +151,6 @@ always @(posedge clk_sys) begin
 				if (cvalid && (ctag == tag)) begin
 					cpu_data     <= rd_data_r[8*woff +: 8];
 					cache_ack    <= 1'b1;
-					access_pulse <= 1'b1;
-					hit_pulse    <= 1'b1;
 					state        <= ST_IDLE;
 				end else begin
 					miss_idx_r  <= idx;
@@ -194,7 +169,6 @@ always @(posedge clk_sys) begin
 					                line_buf[3], line_buf[2], line_buf[1], line_buf[0]};
 					cpu_data     <= line_buf[miss_woff_r];
 					cache_ack    <= 1'b1;
-					access_pulse <= 1'b1;
 					state        <= ST_IDLE;
 				end
 			end

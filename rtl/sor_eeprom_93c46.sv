@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
 //============================================================================
 //  Super Off Road — 93C46 3-wire serial EEPROM (64 x 16-bit)
 //
-//  Standard Microwire protocol, validated against MAME leland.cpp/leland_m.cpp:
-//    EEPROM_93C46_16BIT(config, m_eeprom) -- 64 words x 16 bits.
+//  Standard Microwire protocol, as in MAME leland.cpp/leland_m.cpp (64 words x 16 bits).
 //    Wiring (leland_master_output_w, /MCONT write, port 0x09):
 //      bit4 = DI (data in), bit5 = CLK, bit6 = CS
 //    Wiring (leland_master_input_r, /GIN3 read): bit0 = DO (data out),
@@ -11,9 +13,7 @@
 //  Command format (shifted in MSB-first while CS=1, sampled on CLK rising
 //  edge): START(1) + OPCODE(2) + ADDRESS(6), then 16 data bits for WRITE,
 //  or 16 clocks of DO output for READ (MSB first). EWEN/EWDS/ERASE
-//  opcodes are accepted (bit pattern decoded) but are no-ops here --
-//  this core doesn't need write-protect semantics to boot, only correct
-//  READ/WRITE of the 64 words.
+//  opcodes are accepted but are no-ops (no write-protect model).
 //============================================================================
 
 module sor_eeprom_93c46
@@ -25,10 +25,8 @@ module sor_eeprom_93c46
 	input        di,      // data in (MCONT bit4)
 	output reg   do_out,  // data out (GIN3 bit0)
 
-	// WP-L3: per-game default-content load port. sor_board.sv's boot FSM
-	// writes all 64 words here (from the MRA-delivered image at
-	// leland_board_pkg::ADDR_EEPROM_BASE) before releasing the CPUs --
-	// replaces the old offroad-only hardcoded initial block.
+	// Per-game default-content load port: sor_board's boot FSM writes all 64 words here
+	// (from the MRA image at leland_board_pkg::ADDR_EEPROM_BASE) before releasing the CPUs.
 	input        mem_wr,
 	input  [5:0] mem_wr_addr,
 	input [15:0] mem_wr_data
@@ -51,13 +49,8 @@ wire clk_rise = clk_in & ~clk_prev;
 always @(posedge clk_sys) begin
 	clk_prev <= clk_in;
 
-	// WP-L3: boot-time default-content load (sor_board.sv's ee_st FSM).
-	// Single driver for mem[] -- merged into this block rather than a
-	// separate always @(posedge clk_sys), which Quartus correctly
-	// rejects as multiple constant drivers on the same net (ModelSim
-	// doesn't catch this at simulation time, only real synthesis does).
-	// mem_wr only pulses during boot, well before cs/clk_in ever toggle,
-	// so there's no real overlap with the S_DATA WRITE path below.
+	// Boot-time default-content load. mem[] has a single driver (this block); mem_wr
+	// only pulses during boot, before cs/clk_in toggle.
 	if (mem_wr) mem[mem_wr_addr] <= mem_wr_data;
 
 	if (reset || !cs) begin
@@ -86,13 +79,8 @@ always @(posedge clk_sys) begin
 
 			S_DATA: begin
 				if (op == 2'b10) begin // READ
-					// MAME eepromser.cpp STATE_READING_DATA: on the first data
-					// clock, load the word and drive its MSB; on later clocks,
-					// shift. The load and the shift are exclusive per edge --
-					// two nonblocking assigns to data_shift on the same edge
-					// would let the shift silently override the load (the bug
-					// that returned 0x7FFF for every word: first bit right,
-					// fifteen stale bits after it).
+					// First data clock: load the word and drive its MSB; later
+					// clocks shift. Load and shift must stay exclusive per edge.
 					if (data_bits == 5'd0) begin
 						do_out     <= mem[eaddr][15];
 						data_shift <= mem[eaddr] << 1;
@@ -107,9 +95,7 @@ always @(posedge clk_sys) begin
 					if (data_bits == 5'd15)
 						mem[eaddr] <= {data_shift[14:0], di};
 				end
-				// EWEN/EWDS/ERASE (op==2'b11 with addr-encoded sub-op, or
-				// op==2'b00 extended commands): no data phase needed for
-				// this core to boot -- accepted but functionally no-ops.
+				// EWEN/EWDS/ERASE: accepted, no effect.
 			end
 		endcase
 	end
