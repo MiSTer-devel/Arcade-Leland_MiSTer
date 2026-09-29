@@ -20,7 +20,8 @@ in RTL and driven by the game's real sound ROM.
 | Tile/sprite video | Working |
 | Leland 80186 sound board (real CPU, real ROM, real DAC) | Working |
 | Controls (spinner, digital d-pad, analog stick, digital gas) | Working |
-| DIP switches (lives, difficulty, service, free play) | Working |
+| Service mode / free play (OSD toggles) | Working |
+| Lives / difficulty | Set in the game's own service-mode menu (stored in EEPROM); the hardware has no DIP switches |
 
 ### Supported games
 

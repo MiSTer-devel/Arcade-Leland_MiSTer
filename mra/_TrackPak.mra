@@ -7,7 +7,7 @@
 	<category>Driving</category>
 	<rbf>SuperOffRoad</rbf>
 
-	<rom index="0" zip="offroadt.zip" md5="None" type="merged">
+	<rom index="0" address="0x30000000" zip="offroadt.zip" md5="None" type="merged">
 		<part>4C 01 03 01 00 00 00 00 00 00 00 00 00 00 00 00</part>
 
 		<part name="03-25016-0x.u58t" crc="adbc6211" length="0x10000"/>
@@ -59,23 +59,18 @@
 		<part name="eeprom-offroad.bin" crc="57955248" length="0x80"/>
 	</rom>
 
-	<switches page="1" title="DIP Switches">
-		<dip name="Lives"        bits="7:6" values="3,4,5,2"/>
-		<dip name="Difficulty"   bits="9:8" values="Normal,Easy,Hard,Very Hard"/>
-		<dip name="Service Mode" bits="4"   values="Off,On"/>
-		<dip name="Free Play"    bits="5"   values="Off,On"/>
-	</switches>
-
 	<!--
 	  Per-game button labels. The core's "J1,Nitro,Coin,Gas,Start" string in
-	  SuperOffRoad.sv is a compile-time localparam shared by all three games
-	  this RBF serves. This game is WHEELS3_PEDALS3, which consumes only J1
-	  bits 4/5/6 (Nitro/Coin/Gas); the 4th declared button exists solely so
-	  pigout's JOY4_DIGITAL scheme has something to bind to bit7, and is
-	  unused here. Named explicitly per-game so the OSD stops offering that
-	  dead 4th entry. "default" is deliberately not set, since supplying it
-	  would rewrite existing gamepad bindings.
+	  SuperOffRoad.sv is shared by all three games this RBF serves. This game is
+	  WHEELS3_PEDALS3: Nitro/Coin/Gas are J1 bits 4/5/6. Bit 7 ("Menu Enter")
+	  acts as the Blue Nitro button, used to choose items in the operator menu
+	  (manual, p.17: Red Nitro selects, Blue Nitro enters). The menu itself is
+	  opened from the OSD ("Service Menu"), not from a controller button, so it
+	  can't be triggered by accident during play.
+	  "default" is deliberately not set, since supplying it would rewrite
+	  existing gamepad bindings. Re-run "Define joystick buttons" in the OSD to
+	  map Menu Enter.
 	-->
-	<buttons names="Nitro,Coin,Gas"></buttons>
+	<buttons names="Nitro,Coin,Gas,Menu Enter"></buttons>
 
 </misterromdescription>

@@ -66,6 +66,7 @@ module sor_master
 	output  [9:0] cram_addr,
 	output  [7:0] cram_din,
 	output        cram_we,
+	input   [7:0] cram_dout,   // palette RAM read-back (port A of the color RAM)
 
 	// VRAM I/O port op stream (to sor_board's VRAM sequencer) --
 	// leland_mvram_port_r/w, installed by init_master_ports at
@@ -199,7 +200,6 @@ module sor_master
 	input   [3:0] p2_btn,
 	input   [3:0] p3_btn,
 	input         service,
-	input         free_play,
 
 	// WP-L3: per-game I/O port base parameterization (leland_board_pkg::
 	// game_cfg, driven by the MRA header's game_id). io_base/mvram_base
@@ -882,7 +882,13 @@ always @(*) begin
 		if      (in_fixed || in_banked_lo || in_fixed_high) cpu_din = rom_data;
 		else if (in_battram)             cpu_din = battram_dout;
 		else if (in_wram)               cpu_din = wram_dout;
-		else if (in_cram)               cpu_din = 8'hFF;  // palette write-only
+		// Palette RAM is real, readable RAM while /MCONT bit 1 selects the
+		// palette view (MAME: m_palette_view[0](...).ram().w(palette write8)).
+		// The Test/service path fills the palette with a self-propagating LDIR
+		// (write seed to F000, then LDIR F000->F001) which READS it back; with
+		// reads returning 0xFF the whole palette became 0xFF (solid white).
+		// View disabled = nothing mapped there, keep the old 0xFF.
+		else if (in_cram)               cpu_din = mcont_r[1] ? cram_dout : 8'hFF;
 	end else if (io_rd) begin
 		if      (io_gin0) cpu_din = gin0_data;
 		else if (io_gin1) cpu_din = gin1_data;

@@ -102,7 +102,6 @@ module sor_board #(
 
 	// OSD options
 	input         service,
-	input         free_play,
 
 	// Debug overlay toggle (2026-07-25, Pig Out slow-motion investigation
 	// instrumentation): OSD-controlled on-screen hex counters, see
@@ -1618,13 +1617,14 @@ sor_eeprom_93c46 eeprom
 wire  [9:0] cram_addr_cpu;
 wire  [7:0] cram_din_cpu;
 wire        cram_we_cpu;
+wire  [7:0] cram_dout_cpu;  // palette read-back for the master (see sor_master.sv in_cram)
 wire  [9:0] cram_addr_vid;
 wire  [7:0] cram_dout_vid;
 
 sor_dpram #(.ADDR_WIDTH(10), .DATA_WIDTH(8)) cram
 (
 	.clk(clk_sys),
-	.addr_a(cram_addr_cpu), .din_a(cram_din_cpu), .we_a(cram_we_cpu), .dout_a(),
+	.addr_a(cram_addr_cpu), .din_a(cram_din_cpu), .we_a(cram_we_cpu), .dout_a(cram_dout_cpu),
 	.addr_b(cram_addr_vid), .din_b(8'd0),          .we_b(1'b0),        .dout_b(cram_dout_vid)
 );
 
@@ -1834,7 +1834,6 @@ wire        sound_ctrl_wr;
 wire [15:0] sound_cmd_wr_data;
 wire        sound_cmd_wr_lo, sound_cmd_wr_hi;
 wire  [7:0] sound_response_data; // 2026-07-18: real 80186 response latch, sor_sound -> sor_master
-
 // Held in reset until SDRAM init completes, in addition to (not instead
 // of) the implicit wait-state stall the SDRAM controller's own access
 // manager already provides pre-ready. Removes any dependence on that
@@ -1862,6 +1861,7 @@ sor_master master
 	.cram_addr(cram_addr_cpu),
 	.cram_din(cram_din_cpu),
 	.cram_we(cram_we_cpu),
+	.cram_dout(cram_dout_cpu),
 
 	.vp_req(vp_req_m),
 	.vp_rd(vp_rd_m),
@@ -1903,7 +1903,6 @@ sor_master master
 	.p2_btn(p2_btn),
 	.p3_btn(p3_btn),
 	.service(service),
-	.free_play(free_play),
 
 	.io_base(io_base_r),
 	.mvram_base(mvram_base_r),

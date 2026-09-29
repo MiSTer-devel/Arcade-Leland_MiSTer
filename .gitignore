@@ -135,3 +135,9 @@ docs/reference/Arcade-Tempest_MiSTer/
 
 # Dev/session docs -- kept local only for now.
 docs/
+
+# Reference manual (downloaded, not redistributed)
+docs/SuperOffRoad_manual.pdf
+sim/retimer/work/
+sim/retimer/transcript
+sim/retimer/*.wlf

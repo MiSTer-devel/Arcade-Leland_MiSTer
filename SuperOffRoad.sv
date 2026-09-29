@@ -21,7 +21,8 @@ assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 // SDRAM pins are driven by sor_board (sdram controller inside)
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
+// DDR3 is shared by the fast ROM loader (sor_ddr_loader) and the CRT frame
+// retimer (sor_retimer); see the DDR3 mux below.
 
 assign VGA_SL       = 0;
 assign VGA_F1       = 0;
@@ -57,23 +58,26 @@ assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 localparam CONF_STR = {
 	"SuperOffRoad;;",
 	"-;",
-	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"O[2],Orientation,Landscape,Portrait;",
-	"-;",
-	"O[4],Service,Off,On;",
-	"O[5],Free Play,Off,On;",
-	"-;",
-	"O[7:6],Lives,3,4,5,2;",
-	"O[9:8],Difficulty,Normal,Easy,Hard,Very Hard;",
+	// Video settings live on their own page. (The old "Orientation" option was
+	// removed: nothing ever read status[2].)
+	"P1,Video Settings;",
+	"P1O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	// CRT retimer (status bits in use: 0,10,12:19,121:122).
+	// Polarity is inverted on purpose: the default (0) is the retimed 60 Hz
+	// output, because native 65.95 Hz will not sync on many CRTs and the
+	// OSD is then unreadable, so the option could never be changed.
+	"P1O[12],Video Timing,CRT 60Hz,Native 66Hz;",
+	"P1O[16:13],CRT V Position,0,Up 1,Up 2,Up 3,Up 4,Up 5,Up 6,Up 7,Up 8,Up 9,Up 10,Up 11,Up 12,Down 1,Down 2,Down 3;",
+	// Photometric (timing stays 262 lines / 60 Hz): resamples the 240 source
+	// lines onto fewer output lines in linear light, so the picture gets shorter.
+	"P1O[19:17],CRT V Size,240 (native),236,232,228,224,220,216,208;",
 	"-;",
 	"O[10],D-Pad Steering,Velocity,Position;",
-	"-;",
-	// Debug overlay (2026-07-25, Pig Out slow-motion investigation): on-screen
-	// hex counters over the top of active video, see rtl/sor_video.sv's
-	// overlay render block. status[11] was verified unused (bits in use:
-	// 0,2,4,5,6:7,8:9,10,121:122) before picking it -- a plain O[n] toggle,
-	// not a J1 button, so it cannot invalidate saved MiSTer control mappings.
-	"O[11],Debug Overlay,Off,On;",
+	// Fires one timed Test press (with Blue Nitro / P1 Start held) and closes the
+	// OSD, which opens the operator menu (Bookkeeping, Diagnostics, Game Set-Up).
+	// It is an OSD action rather than a mappable button so it can't be hit by
+	// accident during play. status[4] is only used as this trigger.
+	"R[4],Service Menu;",
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
@@ -102,7 +106,8 @@ wire [15:0] ioctl_index;
 wire        ioctl_wr;
 wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
-// ioctl_wait driven by sor_board (stalls HPS during SDRAM writes / init)
+// ioctl_wait comes from sor_ddr_loader (which passes through sor_board's
+// stall, see board_wait below) -- stalls HPS during SDRAM writes / init
 wire        ioctl_wait;
 
 // Three-player digital buttons ([3]=coin, [2]=btn2, [1]=btn1, [0]=btn0)
@@ -177,7 +182,48 @@ pll pll
 	.locked(pll_locked)
 );
 
-wire reset      = RESET | status[0] | buttons[1] | ioctl_download | ~pll_locked;
+//----------------------------------------------------------------
+// Fast ROM loading: an MRA <rom index="0" address="0x30000000"> makes the
+// HPS copy the ROM straight into DDR3; sor_ddr_loader then replays it to
+// the board as a normal download (or passes a streamed ROM through).
+//----------------------------------------------------------------
+wire        ld_download, ld_wr, ld_active;
+wire [15:0] ld_index;
+wire [26:0] ld_addr;
+wire  [7:0] ld_data;
+wire        board_wait;
+
+wire        ld_acq, ld_ddr_read;
+wire [28:0] ld_ddr_addr;
+
+sor_ddr_loader ddr_loader
+(
+	.clk(clk_sys),
+
+	.ioctl_download(ioctl_download),
+	.ioctl_index(ioctl_index),
+	.ioctl_addr(ioctl_addr),
+	.ioctl_wr(ioctl_wr),
+	.ioctl_data(ioctl_dout),
+	.ioctl_wait(ioctl_wait),
+
+	.o_download(ld_download),
+	.o_index(ld_index),
+	.o_addr(ld_addr),
+	.o_wr(ld_wr),
+	.o_data(ld_data),
+	.b_wait(board_wait),
+	.active(ld_active),
+
+	.ddr_acquire(ld_acq),
+	.ddr_addr(ld_ddr_addr),
+	.ddr_read(ld_ddr_read),
+	.ddr_busy(DDRAM_BUSY),
+	.ddr_rdata(DDRAM_DOUT),
+	.ddr_rdata_ready(DDRAM_DOUT_READY)
+);
+
+wire reset      = RESET | status[0] | buttons[1] | ioctl_download | ld_active | ~pll_locked;
 wire sdram_init = RESET | ~pll_locked;
 
 //----------------------------------------------------------------
@@ -255,6 +301,36 @@ wire [7:0] p3_joy = joy3[7:0];
 wire [7:0] p4_joy = joy4[7:0];
 
 //----------------------------------------------------------------
+// Service / operator menu
+//
+// The OSD "Service Menu" action (status[4], a trigger) fires one timed press
+// of the Test switch. Per the manual (p.17) the Bookkeeping/Diagnostics menu
+// is entered "with the Blue Nitro button depressed, press the Test button";
+// Red Nitro (P1) then selects and Blue Nitro (P3's Nitro) enters. Verified
+// against MAME for Off-Road. So during the press:
+//   * Test (service) and P3's Nitro are held together,
+//   * P1 Start is held for the whole window (Pig Out's documented sequence is
+//     "P1 Start, then Service"; untested on hardware),
+// and afterwards P1's "Menu Enter" button (J1 button 4, unused by the
+// Off-Road games) acts as Blue Nitro so a single controller can "enter".
+// The press is ~250 ms: long enough for the game to see it, short enough
+// that Blue Nitro is released before the menu is drawn (otherwise it would
+// immediately "enter" the first item). Only p3_btn/p1_joy(bit 6) are touched.
+//----------------------------------------------------------------
+localparam [24:0] SVC_WINDOW = 25'd14_400_000;        // 300 ms at 48 MHz
+localparam [24:0] SVC_TEST_AT = 25'd12_000_000;       // Test + Blue Nitro for the last 250 ms
+reg  [24:0] svc_cnt = 25'd0;
+reg         svc_trig_d = 1'b0;
+always @(posedge clk_sys) begin
+	svc_trig_d <= status[4];
+	if (status[4] & ~svc_trig_d) svc_cnt <= SVC_WINDOW;
+	else if (svc_cnt != 25'd0)   svc_cnt <= svc_cnt - 1'd1;
+end
+wire svc_start = (svc_cnt != 25'd0);
+wire svc_req   = (svc_cnt != 25'd0) && (svc_cnt <= SVC_TEST_AT);
+wire p3_nitro  = joy3[4] | svc_req | joy1[7];
+
+//----------------------------------------------------------------
 // Board
 //----------------------------------------------------------------
 sor_board board
@@ -265,12 +341,12 @@ sor_board board
 	.sdram_init(sdram_init),
 
 	// ROM loading
-	.ioctl_download(ioctl_download),
-	.ioctl_index(ioctl_index),
-	.ioctl_wr(ioctl_wr),
-	.ioctl_addr(ioctl_addr),
-	.ioctl_data(ioctl_dout),
-	.ioctl_wait(ioctl_wait),
+	.ioctl_download(ld_download),
+	.ioctl_index(ld_index),
+	.ioctl_wr(ld_wr),
+	.ioctl_addr(ld_addr),
+	.ioctl_data(ld_data),
+	.ioctl_wait(board_wait),
 
 	// SDRAM
 	.SDRAM_DQ  (SDRAM_DQ),
@@ -311,7 +387,7 @@ sor_board board
 	// buttons like every other MiSTer arcade core.
 	.p1_btn({joy1[5], 1'b0, joy1[4], 1'b0}),
 	.p2_btn({joy2[5], 1'b0, joy2[4], 1'b0}),
-	.p3_btn({joy3[5], 1'b0, joy3[4], 1'b0}),
+	.p3_btn({joy3[5], 1'b0, p3_nitro, 1'b0}),
 	// Wheel: free-running virtual dial position from steering_input.sv
 	// (analog stick + digital d-pad + spinner already combined -- see the
 	// "Steering" block above and sor_master.sv's p1_wheel port comment).
@@ -324,16 +400,16 @@ sor_board board
 	.p3_pedal(p3_gas),
 
 	// WP-L3: 4-player digital joystick (JOY4_DIGITAL/pigout only).
-	.p1_joy(p1_joy),
+	.p1_joy(p1_joy | {1'b0, svc_start, 6'd0}), // + P1 Start held during the Service Menu press (Pig Out)
 	.p2_joy(p2_joy),
 	.p3_joy(p3_joy),
 	.p4_joy(p4_joy),
 
 	// Service / free play from OSD
-	.service(status[4]),
-	.free_play(status[5]),
+	.service(svc_req),
 
-	.show_overlay(status[11]),
+	// debug overlay removed from the OSD (rtl/sor_video.sv keeps the dormant render path)
+	.show_overlay(1'b0),
 
 	.audio_out(audio_out)
 );
@@ -341,15 +417,73 @@ sor_board board
 //----------------------------------------------------------------
 // Video output to MiSTer framework
 //----------------------------------------------------------------
+// CRT retimer (rtl/sor_retimer.sv): when status[12] is clear (default) the output is
+// re-generated at NTSC 240p (15.73 kHz / 60.03 Hz) from a frame buffer while
+// the game keeps running at its native 65.95 Hz. When set to Native, the game's own
+// timing goes straight to the framework as before.
+wire        rt_ce, rt_hb, rt_hs, rt_vb, rt_vs;
+wire [23:0] rt_rgb;
+wire [28:0] rt_ddr_addr;
+wire [63:0] rt_ddr_din;
+wire        rt_ddr_rd, rt_ddr_we;
+wire        rt_wf_overflow;
+
+sor_retimer retimer
+(
+	.clk_sys(clk_sys),
+	// keep off the shared DDR3 bus while a ROM is downloading / replaying
+	.stop(ioctl_download | ld_active),
+
+	.g_ce_pix(ce_pix),
+	.g_hblank(HBlank),
+	.g_vblank(VBlank),
+	.g_rgb(rgb),
+	.vpos(status[16:13]),
+	.vsize(status[19:17]),
+	.o_ce_pix(rt_ce),
+	.o_hblank(rt_hb),
+	.o_hsync(rt_hs),
+	.o_vblank(rt_vb),
+	.o_vsync(rt_vs),
+	.o_rgb(rt_rgb),
+
+	.DDRAM_CLK(),
+	.DDRAM_BUSY(DDRAM_BUSY),
+	.DDRAM_BURSTCNT(),
+	.DDRAM_ADDR(rt_ddr_addr),
+	.DDRAM_DOUT(DDRAM_DOUT),
+	.DDRAM_DOUT_READY(DDRAM_DOUT_READY),
+	.DDRAM_RD(rt_ddr_rd),
+	.DDRAM_DIN(rt_ddr_din),
+	.DDRAM_BE(),
+	.DDRAM_WE(rt_ddr_we),
+	.wf_overflow(rt_wf_overflow)
+);
+
+// DDR3 bus: the ROM loader owns it while replaying (the retimer is stopped
+// for that whole time), the retimer otherwise. Both only use 1-beat bursts
+// with all byte enables.
+assign DDRAM_CLK      = clk_sys;
+assign DDRAM_BURSTCNT = 8'd1;
+assign DDRAM_BE       = 8'hFF;
+assign DDRAM_ADDR     = ld_acq ? ld_ddr_addr : rt_ddr_addr;
+assign DDRAM_RD       = ld_acq ? ld_ddr_read : rt_ddr_rd;
+assign DDRAM_WE       = ld_acq ? 1'b0        : rt_ddr_we;
+assign DDRAM_DIN      = rt_ddr_din;
+
+wire crt_mode = ~status[12];
+
 assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL  = ce_pix;
+assign CE_PIXEL  = crt_mode ? rt_ce : ce_pix;
 
-assign VGA_DE = ~(HBlank | VBlank);
-assign VGA_HS = HSync;
-assign VGA_VS = VSync;
+assign VGA_DE = crt_mode ? ~(rt_hb | rt_vb) : ~(HBlank | VBlank);
+assign VGA_HS = crt_mode ? rt_hs : HSync;
+assign VGA_VS = crt_mode ? rt_vs : VSync;
 
-assign VGA_R = rgb[23:16];
-assign VGA_G = rgb[15:8];
-assign VGA_B = rgb[7:0];
+wire [23:0] vid_rgb = crt_mode ? rt_rgb : rgb;
+
+assign VGA_R = vid_rgb[23:16];
+assign VGA_G = vid_rgb[15:8];
+assign VGA_B = vid_rgb[7:0];
 
 endmodule
