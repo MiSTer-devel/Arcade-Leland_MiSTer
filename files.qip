@@ -19,11 +19,14 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/leland_vram_port.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_board.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/leland_master.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/leland_slave.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/leland_master_ataxx.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/leland_slave_ataxx.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/leland_video.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video/leland_retimer.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/leland_ddr_loader.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/leland_dpram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/leland_eeprom_93c46.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/leland_eeprom_93c56.sv
 
 
 ## ── Sound board ─────────────────────────────────────────────────────

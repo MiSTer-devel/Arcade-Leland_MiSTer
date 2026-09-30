@@ -1,0 +1,360 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 shimian5
+
+// Ataxx master Z80 (MAME leland.cpp master_map_program_2 / master_map_io_2).
+
+module leland_master_ataxx
+(
+	input         clk_sys,
+	input         reset,
+	input         CE_6M,
+
+	output [17:0] rom_addr,
+	input   [7:0] rom_data,
+	output        rom_req,
+	input         rom_stall,
+
+	output [12:0] wram_addr,
+	output  [7:0] wram_din,
+	output        wram_we,
+	input   [7:0] wram_dout,
+
+	output [13:0] battram_addr,
+	output  [7:0] battram_din,
+	output        battram_we,
+	input   [7:0] battram_dout,
+
+	output [15:0] qram_addr,
+	output  [7:0] qram_din,
+	output        qram_we,
+	input   [7:0] qram_dout,
+
+	output [10:0] pal_addr,
+	output  [7:0] pal_din,
+	output        pal_we,
+	input   [7:0] pal_dout,
+
+	output        vp_req,
+	output        vp_rd,
+	output        vp_trans,
+	output [15:0] vp_addr,
+	output  [7:0] vp_data,
+	input         vp_pop,
+	input   [7:0] vp_rdata,
+
+	output        slave_reset_n,
+	output        slave_nmi_n,
+	output        slave_int_req,
+	input         slave_halt_n,
+
+	input         vblank,
+	input   [7:0] raster_line,
+
+	output        eeprom_di,
+	output        eeprom_clk,
+	output        eeprom_cs,
+	input         eeprom_do,
+
+	output [15:0] vid_addr,
+	output        vid_addr_wr,
+	output [15:0] scroll_x,
+	output [15:0] scroll_y,
+	output  [7:0] master_bank_o,
+
+	output  [7:0] sound_ctrl_data,
+	output        sound_ctrl_wr,
+	output [15:0] cmd_wr_data,
+	output        cmd_wr_lo,
+	output        cmd_wr_hi,
+	input   [7:0] response_data,
+
+	// Trackball accumulators (free-running mod 256) and digital inputs
+	input   [7:0] p1_x, p1_y, p2_x, p2_y,
+	input   [7:0] p1_joy, p2_joy,   // [4]=button [6]=start [7]=coin
+	input         service
+);
+
+wire        m1_n, mreq_n, iorq_n, rd_n, wr_n, rfsh_n, halt_n, busak_n;
+wire [15:0] cpu_addr;
+wire  [7:0] cpu_dout;
+reg   [7:0] cpu_din;
+
+wire int_n_final;
+wire mvport_stall;
+
+tv80s_ce #(.Mode(0), .T2Write(1), .IOWait(1)) master_cpu
+(
+	.reset_n(~reset),
+	.clk    (clk_sys),
+	.cen    (CE_6M),
+	.wait_n (~((rom_req & rom_stall) | mvport_stall)),
+	.int_n  (int_n_final),
+	.nmi_n  (1'b1),
+	.busrq_n(1'b1),
+	.m1_n   (m1_n),
+	.mreq_n (mreq_n),
+	.iorq_n (iorq_n),
+	.rd_n   (rd_n),
+	.wr_n   (wr_n),
+	.rfsh_n (rfsh_n),
+	.halt_n (halt_n),
+	.busak_n(busak_n),
+	.A      (cpu_addr),
+	.di     (cpu_din),
+	.dout   (cpu_dout)
+);
+
+wire mem_access = ~mreq_n & rfsh_n;
+wire io_rd = ~iorq_n & ~rd_n;
+wire io_wr = ~iorq_n & ~wr_n;
+
+reg [7:0] master_bank;
+assign master_bank_o = master_bank;
+
+wire [1:0] view     = master_bank[5:4];
+wire       bat_view = (view == 2'd1);
+wire       qram_view = (view == 2'd2);
+wire       pal_view = (view == 2'd3);
+
+// Interrupt: once per frame at a programmable scanline, held until acknowledged.
+reg [7:0] int_line;
+reg [7:0] raster_prev;
+reg       periodic_int_n;
+
+always @(posedge clk_sys) begin
+	raster_prev <= raster_line;
+	if (reset)
+		periodic_int_n <= 1'b1;
+	else if ((raster_line != raster_prev) && (raster_line == int_line))
+		periodic_int_n <= 1'b0;
+	else if (CE_6M && ~iorq_n & ~m1_n)
+		periodic_int_n <= 1'b1;
+end
+assign int_n_final = periodic_int_n;
+
+// Memory decode
+wire in_fixed    = (cpu_addr[15:13] == 3'd0);
+wire in_banked   = (cpu_addr[15:13] >= 3'd1) && (cpu_addr[15:13] <= 3'd4);
+wire in_high     = (cpu_addr[15:13] == 3'd5) || (cpu_addr[15:13] == 3'd6);
+wire in_battram  = in_high & bat_view;
+wire in_qram     = in_high & qram_view;
+wire in_high_rom = in_high & ~bat_view & ~qram_view;
+wire in_ram      = (cpu_addr >= 16'hE000) && (cpu_addr <= 16'hF7FF);
+wire in_top      = (cpu_addr[15:11] == 5'b11111);
+wire in_pal      = in_top & pal_view;
+wire in_tram     = in_top & ~pal_view & (cpu_addr[10:2] != 9'h1FF);
+wire in_vidlat   = in_top & ~pal_view & (cpu_addr[10:1] == 10'h3FC);
+wire in_xrom     = in_top & ~pal_view & (cpu_addr[10:2] == 9'h1FF);
+
+assign rom_req = mem_access & ~rd_n & (in_fixed | in_banked | in_high_rom);
+
+// Banks 1-3 land on the 32 KB blocks at 0x8000*bank of the raw ROM; bank 0 and
+// out-of-range banks map the window straight onto the raw image.
+wire bank_raw = (master_bank[3:0] == 4'd0) || (master_bank[3:2] != 2'd0);
+assign rom_addr = (in_banked & ~bank_raw) ? {1'b0, master_bank[1:0], cpu_addr[14:0]} :
+                                            {2'b0, cpu_addr};
+
+// RAM
+assign wram_addr = cpu_addr[12:0];
+assign wram_din  = cpu_dout;
+assign wram_we   = mem_access & ~wr_n & (in_ram | in_tram) & ~in_vidlat;
+
+wire [15:0] hi_off = cpu_addr - 16'hA000;
+assign battram_addr = hi_off[13:0];
+assign battram_din  = cpu_dout;
+assign battram_we   = mem_access & ~wr_n & in_battram;
+
+assign qram_addr = {master_bank[7:6], hi_off[13:0]};
+assign qram_din  = cpu_dout;
+assign qram_we   = mem_access & ~wr_n & in_qram;
+
+assign pal_addr = cpu_addr[10:0];
+assign pal_din  = cpu_dout;
+assign pal_we   = mem_access & ~wr_n & in_pal;
+
+// Video address latch at 0xFFF8/0xFFF9
+reg [15:0] vid_addr_r;
+reg        vid_addr_wr_r;
+always @(posedge clk_sys) begin
+	vid_addr_wr_r <= 1'b0;
+	if (CE_6M && mem_access && ~wr_n && in_vidlat) begin
+		if (!cpu_addr[0]) vid_addr_r[7:0]  <= cpu_dout;
+		else              vid_addr_r[15:8] <= cpu_dout;
+		vid_addr_wr_r <= 1'b1;
+	end
+end
+assign vid_addr    = vid_addr_r;
+assign vid_addr_wr = vid_addr_wr_r;
+
+// VRAM port at 0xD0-0xEF, offset shuffled as in ataxx_mvram_port_r/w
+wire       io_vram = (cpu_addr[7:4] == 4'hD) || (cpu_addr[7:4] == 4'hE);
+wire [4:0] vp_off  = {~cpu_addr[4], cpu_addr[3:0]};
+wire [4:0] vp_shuf = {vp_off[4], vp_off[0], vp_off[3:1]};
+wire [7:0] vram_rd_data;
+
+leland_vram_port #(.TRANS_EN(1'b0)) mvport
+(
+	.clk_sys(clk_sys),
+	.reset(reset),
+	.CE_6M(CE_6M),
+
+	.cpu_addr({cpu_addr[15:5], vp_shuf}),
+	.cpu_dout(cpu_dout),
+	.io_wr(io_wr),
+	.io_rd(io_rd),
+	.io_vram_sel(io_vram),
+	.vidlat_wr(CE_6M && mem_access && ~wr_n && in_vidlat),
+	.vidlat_hi(cpu_addr[0]),
+
+	.rd_data(vram_rd_data),
+	.vp_stall(mvport_stall),
+
+	.vp_req(vp_req),
+	.vp_rd(vp_rd),
+	.vp_trans(vp_trans),
+	.vp_addr(vp_addr),
+	.vp_data(vp_data),
+	.vp_pop(vp_pop),
+	.vp_rdata(vp_rdata)
+);
+
+// Trackball dials (ataxx_trackball_r -> dial_compute_value)
+function automatic [7:0] dial_compute(input [7:0] new_val, input [7:0] last_val, input [7:0] last_result);
+	reg signed [8:0] delta;
+	reg        [7:0] result;
+	begin
+		delta  = $signed({1'b0, new_val}) - $signed({1'b0, last_val});
+		result = last_result & 8'h80;
+		if (delta > 9'sd128)       delta = delta - 9'sd256;
+		else if (delta < -9'sd128) delta = delta + 9'sd256;
+		if (delta < 0) begin
+			result = 8'h80;
+			delta  = -delta;
+		end else if (delta > 0) begin
+			result = 8'h00;
+		end
+		if (delta > 9'sd31) delta = 9'sd31;
+		result = result | ((last_result + delta[7:0]) & 8'h1F);
+		dial_compute = result;
+	end
+endfunction
+
+wire io_dial = (cpu_addr[7:2] == 6'd0);
+wire [1:0] dial_ch = cpu_addr[1:0];
+
+reg [7:0] dial_last [0:3];
+reg [7:0] dial_res  [0:3];
+wire [7:0] dial_in  [0:3];
+assign dial_in[0] = p1_x;
+assign dial_in[1] = p1_y;
+assign dial_in[2] = p2_x;
+assign dial_in[3] = p2_y;
+wire [7:0] dial_now = dial_compute(dial_in[dial_ch], dial_last[dial_ch], dial_res[dial_ch]);
+
+integer i;
+always @(posedge clk_sys) begin
+	if (reset) begin
+		for (i = 0; i < 4; i = i + 1) begin
+			dial_last[i] <= 8'h00;
+			dial_res[i]  <= 8'h00;
+		end
+	end else if (CE_6M && io_rd && io_dial) begin
+		dial_res[dial_ch]  <= dial_now;
+		dial_last[dial_ch] <= dial_in[dial_ch];
+	end
+end
+
+// Inputs
+wire io_resp  = (cpu_addr[7:0] == 8'h04);
+wire io_eep   = (cpu_addr[7:0] == 8'h20);
+wire io_f0    = (cpu_addr[7:4] == 4'hF);
+wire [3:0] f_off = cpu_addr[3:0];
+
+wire [7:0] in0 = {~p2_joy[4], ~p2_joy[6], ~p1_joy[4], ~p1_joy[6],
+                  ~service, 1'b1, ~p2_joy[7], ~p1_joy[7]};
+wire [7:0] in1 = {6'h3F, ~vblank, ~slave_halt_n};
+
+// Writes
+reg [7:0] slave_ctl_r;
+reg [15:0] scroll_x_r, scroll_y_r;
+reg [7:0] eeprom_r;
+reg [7:0] sound_ctrl_data_r;
+reg       sound_ctrl_wr_r;
+reg [7:0] cmd_wr_data_r;
+reg       cmd_wr_lo_r, cmd_wr_hi_r;
+
+always @(posedge clk_sys) begin
+	if (reset) begin
+		master_bank       <= 8'h00;
+		slave_ctl_r       <= 8'h00;
+		scroll_x_r        <= 16'd0;
+		scroll_y_r        <= 16'd0;
+		eeprom_r          <= 8'h00;
+		int_line          <= 8'd8;
+		sound_ctrl_data_r <= 8'h00;
+		sound_ctrl_wr_r   <= 1'b0;
+		cmd_wr_data_r     <= 8'h00;
+		cmd_wr_lo_r       <= 1'b0;
+		cmd_wr_hi_r       <= 1'b0;
+	end else begin
+		sound_ctrl_wr_r <= 1'b0;
+		cmd_wr_lo_r     <= 1'b0;
+		cmd_wr_hi_r     <= 1'b0;
+		if (CE_6M && io_wr) begin
+			if (cpu_addr[7:0] == 8'h05) begin cmd_wr_data_r <= cpu_dout; cmd_wr_hi_r <= 1'b1; end
+			if (cpu_addr[7:0] == 8'h06) begin cmd_wr_data_r <= cpu_dout; cmd_wr_lo_r <= 1'b1; end
+			if (cpu_addr[7:0] == 8'h0C) begin
+				sound_ctrl_data_r <= {cpu_dout[0], cpu_dout[1], cpu_dout[2], cpu_dout[3], 4'h0};
+				sound_ctrl_wr_r   <= 1'b1;
+			end
+			if (io_eep) eeprom_r <= cpu_dout;
+			if (io_f0) begin
+				case (f_off)
+					4'h0: scroll_x_r[7:0]  <= cpu_dout;
+					4'h1: scroll_x_r[15:8] <= cpu_dout;
+					4'h2: scroll_y_r[7:0]  <= cpu_dout;
+					4'h3: scroll_y_r[15:8] <= cpu_dout;
+					4'h4: master_bank      <= cpu_dout;
+					4'h5: slave_ctl_r      <= cpu_dout;
+					4'h8: int_line         <= cpu_dout + 8'd1;
+					default: ;
+				endcase
+			end
+		end
+	end
+end
+
+assign scroll_x        = scroll_x_r;
+assign scroll_y        = scroll_y_r;
+assign slave_reset_n   = slave_ctl_r[4];
+assign slave_nmi_n     = slave_ctl_r[2];
+assign slave_int_req   = ~slave_ctl_r[0];
+assign eeprom_di       = eeprom_r[4];
+assign eeprom_clk      = eeprom_r[5];
+assign eeprom_cs       = eeprom_r[6];
+assign sound_ctrl_data = sound_ctrl_data_r;
+assign sound_ctrl_wr   = sound_ctrl_wr_r;
+assign cmd_wr_data     = {cmd_wr_data_r, cmd_wr_data_r};
+assign cmd_wr_lo       = cmd_wr_lo_r;
+assign cmd_wr_hi       = cmd_wr_hi_r;
+
+always @(*) begin
+	cpu_din = 8'hFF;
+	if (mem_access && ~rd_n) begin
+		if      (in_fixed || in_banked || in_high_rom) cpu_din = rom_data;
+		else if (in_battram)             cpu_din = battram_dout;
+		else if (in_qram)                cpu_din = qram_dout;
+		else if (in_ram || in_tram)      cpu_din = wram_dout;
+		else if (in_pal)                 cpu_din = pal_dout;
+		// xrom is unpopulated on Ataxx and reads as erased flash
+	end else if (io_rd) begin
+		if      (io_dial)  cpu_din = dial_now;
+		else if (io_resp)  cpu_din = response_data;
+		else if (io_eep)   cpu_din = {7'h7F, eeprom_do};
+		else if (io_vram)  cpu_din = vram_rd_data;
+		else if (io_f0 && f_off == 4'h6) cpu_din = in0;
+		else if (io_f0 && f_off == 4'h7) cpu_din = in1;
+	end
+end
+
+endmodule

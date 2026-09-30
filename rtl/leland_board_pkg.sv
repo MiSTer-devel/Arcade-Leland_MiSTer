@@ -142,10 +142,11 @@ package leland_board_pkg;
 		logic [7:0]     mvram_base; // leland_mvram_port_r/w window base
 	} game_cfg_t;
 
-	localparam int NUM_GAMES = 3;
+	localparam int NUM_GAMES = 4;
 	localparam int GAME_OFFROAD  = 0;
 	localparam int GAME_OFFROADT = 1;
 	localparam int GAME_PIGOUT   = 2;
+	localparam int GAME_ATAXX    = 3;
 
 	function automatic game_cfg_t game_cfg(input int game_id);
 		game_cfg_t cfg;
@@ -169,6 +170,13 @@ package leland_board_pkg;
 				input_scheme: JOY4_DIGITAL,
 				flags:        (8'd1 << FLAG_IN4_PORT), // single window + fixed IN4@0x7F
 				io_base:      8'h40,
+				mvram_base:   8'h00
+			};
+			GAME_ATAXX: cfg = '{
+				board_class:  GEN4_ATAXX,
+				input_scheme: TRACKBALL,
+				flags:        (8'd1 << FLAG_EEPROM_93C56),
+				io_base:      8'h00,
 				mvram_base:   8'h00
 			};
 			default: cfg = '{

@@ -12,9 +12,12 @@
 ../rtl/leland_board.sv
 ../rtl/cpu/leland_master.sv
 ../rtl/cpu/leland_slave.sv
+../rtl/cpu/leland_master_ataxx.sv
+../rtl/cpu/leland_slave_ataxx.sv
 ../rtl/video/leland_video.sv
 ../rtl/mem/leland_dpram.sv
 ../rtl/mem/leland_eeprom_93c46.sv
+../rtl/mem/leland_eeprom_93c56.sv
 ../rtl/s80x86/config.v
 ../rtl/s80x86/microcode/MicrocodeTypes.sv
 ../rtl/s80x86/FlagsEnum.sv

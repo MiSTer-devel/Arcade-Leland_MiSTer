@@ -70,6 +70,9 @@ module leland_board #(
 	// IPT_PEDAL AN0/AN1/AN2 do.
 	input   [7:0] p1_pedal, p2_pedal, p3_pedal,
 
+	// Trackball Y axes for Ataxx (X uses p1_wheel/p2_wheel)
+	input   [7:0] p1_wheel_y, p2_wheel_y,
+
 	// 4-player digital joystick, used only when the active game's
 	// input_scheme is JOY4_DIGITAL (pigout) -- unconsumed for WHEELS3_
 	// PEDALS3 games. Bit layout: [0]=right [1]=left [2]=down [3]=up
@@ -497,11 +500,15 @@ localparam [26:0] ADDR_PROM_REAL_HI = ADDR_PROM_BASE + 27'h020000;
 // The EEPROM default image (128 bytes = 64 x 16-bit words) follows at ADDR_EEPROM_BASE;
 // the write gate extends to cover it (real content only, like the bounds above).
 localparam [26:0] ADDR_EEPROM_REAL_HI = ADDR_EEPROM_BASE + 27'h000080;
+localparam [26:0] ADDR_EEPROM_REAL_HI_G4 = ADDR_EEPROM_BASE + 27'h000100;
+
+wire ataxx_sel = (game_cfg_r.board_class == GEN4_ATAXX);
 
 logic [26:0] wr_gate_hi;
 always @(*) begin
-	case (board_class_r)
+	case (game_cfg_r.board_class)
 		GEN3_LELANDI: wr_gate_hi = ADDR_EEPROM_REAL_HI;
+		GEN4_ATAXX:   wr_gate_hi = ADDR_EEPROM_REAL_HI_G4;
 		default:      wr_gate_hi = ADDR_EEPROM_REAL_HI;
 	endcase
 end
@@ -667,7 +674,13 @@ always @(posedge clk_sys) begin
 		repack_wr_req_r <= 1'b0;
 	end else begin
 		case (repack_st)
-			RP_IDLE: if (dl_settled && !wr_pending) repack_st <= RP_RD0_REQ;
+			RP_IDLE: if (dl_settled && !wr_pending) begin
+				if (ataxx_sel) begin
+					repack_st   <= RP_DONE;
+					repack_done <= 1'b1;
+				end else
+					repack_st <= RP_RD0_REQ;
+			end
 
 			// plane0[idx] -- ADDR_GFX_BASE + idx (u93, the first 32KB third)
 			RP_RD0_REQ: begin
@@ -766,14 +779,14 @@ typedef enum logic [2:0] {
 } ee_state_e;
 
 ee_state_e ee_st;
-reg  [5:0] ee_idx;
+reg  [6:0] ee_idx;
 reg  [7:0] ee_hi;
 reg        ee_done;
 
 reg        ee_rd_req_r;
 reg [24:0] ee_rd_addr_r;
 reg        ee_mem_wr_r;
-reg  [5:0] ee_mem_wr_addr_r;
+reg  [6:0] ee_mem_wr_addr_r;
 reg [15:0] ee_mem_wr_data_r;
 
 wire ee_active = (ee_st != EE_IDLE) && (ee_st != EE_DONE);
@@ -782,7 +795,7 @@ always @(posedge clk_sys) begin
 	ee_mem_wr_r <= 1'b0;
 	if (sdram_init) begin
 		ee_st       <= EE_IDLE;
-		ee_idx      <= 6'd0;
+		ee_idx      <= 7'd0;
 		ee_done     <= 1'b0;
 		ee_rd_req_r <= 1'b0;
 	end else begin
@@ -790,7 +803,7 @@ always @(posedge clk_sys) begin
 			EE_IDLE: if (repack_done) ee_st <= EE_RD_HI_REQ;
 
 			EE_RD_HI_REQ: begin
-				ee_rd_addr_r <= ADDR_EEPROM_BASE[24:0] + {18'b0, ee_idx, 1'b0};
+				ee_rd_addr_r <= ADDR_EEPROM_BASE[24:0] + {17'b0, ee_idx, 1'b0};
 				ee_rd_req_r  <= 1'b1;
 				ee_st        <= EE_RD_HI_WAIT;
 			end
@@ -801,7 +814,7 @@ always @(posedge clk_sys) begin
 			end
 
 			EE_RD_LO_REQ: begin
-				ee_rd_addr_r <= ADDR_EEPROM_BASE[24:0] + {18'b0, ee_idx, 1'b0} + 25'd1;
+				ee_rd_addr_r <= ADDR_EEPROM_BASE[24:0] + {17'b0, ee_idx, 1'b0} + 25'd1;
 				ee_rd_req_r  <= 1'b1;
 				ee_st        <= EE_RD_LO_WAIT;
 			end
@@ -816,11 +829,11 @@ always @(posedge clk_sys) begin
 
 			EE_WR: begin
 				ee_mem_wr_r <= 1'b1;
-				if (ee_idx == 6'd63) begin
+				if (ee_idx == (ataxx_sel ? 7'd127 : 7'd63)) begin
 					ee_st   <= EE_DONE;
 					ee_done <= 1'b1;
 				end else begin
-					ee_idx <= ee_idx + 6'd1;
+					ee_idx <= ee_idx + 7'd1;
 					ee_st  <= EE_RD_HI_REQ;
 				end
 			end
@@ -831,7 +844,7 @@ always @(posedge clk_sys) begin
 end
 
 wire        eeprom_mem_wr      = ee_mem_wr_r;
-wire  [5:0] eeprom_mem_wr_addr = ee_mem_wr_addr_r;
+wire  [6:0] eeprom_mem_wr_addr = ee_mem_wr_addr_r;
 wire [15:0] eeprom_mem_wr_data = ee_mem_wr_data_r;
 
 // Final muxes: the repack FSM and the EEPROM loader borrow rd2/wr while active
@@ -988,16 +1001,23 @@ end
 // the slave's is a separate RAM). The CPUs only communicate through VRAM and the
 // SLAVEHALT poll.
 //------------------------------------------------------------------
-wire [11:0] wram_addr_m, wram_addr_s;
-wire  [7:0] wram_din_m,  wram_din_s;
-wire        wram_we_m,   wram_we_s;
+wire [11:0] wram_addr_mg, wram_addr_s;
+wire  [7:0] wram_din_mg, wram_din_s;
+wire        wram_we_mg, wram_we_s;
+wire [12:0] wram_addr_ma;
+wire  [7:0] wram_din_ma;
+wire        wram_we_ma;
 wire  [7:0] wram_dout_m, wram_dout_s;
 
-leland_dpram #(.ADDR_WIDTH(12), .DATA_WIDTH(8)) wram_m
+wire [12:0] wram_addr_m = ataxx_sel ? wram_addr_ma : {1'b0, wram_addr_mg};
+wire  [7:0] wram_din_m  = ataxx_sel ? wram_din_ma  : wram_din_mg;
+wire        wram_we_m   = ataxx_sel ? wram_we_ma   : wram_we_mg;
+
+leland_dpram #(.ADDR_WIDTH(13), .DATA_WIDTH(8)) wram_m
 (
 	.clk(clk_sys),
 	.addr_a(wram_addr_m), .din_a(wram_din_m), .we_a(wram_we_m), .dout_a(wram_dout_m),
-	.addr_b(12'd0), .din_b(8'd0), .we_b(1'b0), .dout_b()
+	.addr_b(13'd0), .din_b(8'd0), .we_b(1'b0), .dout_b()
 );
 
 leland_dpram #(.ADDR_WIDTH(12), .DATA_WIDTH(8)) wram_s
@@ -1012,10 +1032,14 @@ leland_dpram #(.ADDR_WIDTH(12), .DATA_WIDTH(8)) wram_s
 // bank_reg==1). Volatile here; on a blank board the game's own recovery path
 // writes the magic signature and defaults.
 //------------------------------------------------------------------
-wire [13:0] battram_addr_m;
-wire  [7:0] battram_din_m;
-wire        battram_we_m;
+wire [13:0] battram_addr_mg, battram_addr_ma;
+wire  [7:0] battram_din_mg,  battram_din_ma;
+wire        battram_we_mg,   battram_we_ma;
 wire  [7:0] battram_dout_m;
+
+wire [13:0] battram_addr_m = ataxx_sel ? battram_addr_ma : battram_addr_mg;
+wire  [7:0] battram_din_m  = ataxx_sel ? battram_din_ma  : battram_din_mg;
+wire        battram_we_m   = ataxx_sel ? battram_we_ma   : battram_we_mg;
 
 leland_dpram #(.ADDR_WIDTH(14), .DATA_WIDTH(8)) battram_m
 (
@@ -1028,21 +1052,72 @@ leland_dpram #(.ADDR_WIDTH(14), .DATA_WIDTH(8)) battram_m
 // EEPROM (93C46, 64 x 16-bit): DI/CLK/CS on /MCONT bits 4/5/6, DO on GIN3 bit 0
 // (see leland_master.sv).
 //------------------------------------------------------------------
-wire eeprom_di, eeprom_clk, eeprom_cs, eeprom_do;
+wire eeprom_di_g, eeprom_clk_g, eeprom_cs_g, eeprom_do_g;
+wire eeprom_di_a, eeprom_clk_a, eeprom_cs_a, eeprom_do_a;
 
 leland_eeprom_93c46 eeprom
 (
 	.clk_sys(clk_sys),
 	.reset(reset),
-	.cs(eeprom_cs),
-	.clk_in(eeprom_clk),
-	.di(eeprom_di),
-	.do_out(eeprom_do),
+	.cs(eeprom_cs_g),
+	.clk_in(eeprom_clk_g),
+	.di(eeprom_di_g),
+	.do_out(eeprom_do_g),
 
-	.mem_wr(eeprom_mem_wr),
+	.mem_wr(eeprom_mem_wr & ~ataxx_sel),
+	.mem_wr_addr(eeprom_mem_wr_addr[5:0]),
+	.mem_wr_data(eeprom_mem_wr_data)
+);
+
+// Ataxx: 93C56, 128 x 16-bit, read through port 0x20
+leland_eeprom_93c56 eeprom_ax
+(
+	.clk_sys(clk_sys),
+	.reset(reset),
+	.cs(eeprom_cs_a),
+	.clk_in(eeprom_clk_a),
+	.di(eeprom_di_a),
+	.do_out(eeprom_do_a),
+
+	.mem_wr(eeprom_mem_wr & ataxx_sel),
 	.mem_wr_addr(eeprom_mem_wr_addr),
 	.mem_wr_data(eeprom_mem_wr_data)
 );
+
+//------------------------------------------------------------------
+// Ataxx tile RAM (64 KB) and palette RAM (2 KB, xRGB-444 little-endian words);
+// port B is reserved for the Ataxx video path.
+//------------------------------------------------------------------
+wire [15:0] qram_addr_ma;
+wire  [7:0] qram_din_ma;
+wire        qram_we_ma;
+wire  [7:0] qram_dout_ma;
+wire [15:0] qram_addr_vid;
+wire  [7:0] qram_dout_vid;
+
+leland_dpram #(.ADDR_WIDTH(16), .DATA_WIDTH(8)) qram
+(
+	.clk(clk_sys),
+	.addr_a(qram_addr_ma), .din_a(qram_din_ma), .we_a(qram_we_ma), .dout_a(qram_dout_ma),
+	.addr_b(qram_addr_vid), .din_b(8'd0), .we_b(1'b0), .dout_b(qram_dout_vid)
+);
+
+wire [10:0] pal_addr_ma;
+wire  [7:0] pal_din_ma;
+wire        pal_we_ma;
+wire  [7:0] pal_dout_ma;
+wire [10:0] pal_addr_vid;
+wire  [7:0] pal_dout_vid;
+
+leland_dpram #(.ADDR_WIDTH(11), .DATA_WIDTH(8)) palram
+(
+	.clk(clk_sys),
+	.addr_a(pal_addr_ma), .din_a(pal_din_ma), .we_a(pal_we_ma), .dout_a(pal_dout_ma),
+	.addr_b(pal_addr_vid), .din_b(8'd0), .we_b(1'b0), .dout_b(pal_dout_vid)
+);
+
+assign qram_addr_vid = 16'd0;
+assign pal_addr_vid  = 11'd0;
 
 //------------------------------------------------------------------
 // Color RAM — 1 KB dual-port (Master writes, video reads)
@@ -1166,24 +1241,135 @@ wire        sound_ctrl_wr;
 wire [15:0] sound_cmd_wr_data;
 wire        sound_cmd_wr_lo, sound_cmd_wr_hi;
 wire  [7:0] sound_response_data; // 80186 response latch, leland_sound -> leland_master
+
+// Per-board-class master outputs (_g: Leland gen 1-3, _a: Ataxx), muxed by ataxx_sel.
+wire [17:0] master_rom_addr_g, master_rom_addr_a;
+wire        master_rom_req_g,  master_rom_req_a;
+wire        vp_req_mg, vp_rd_mg, vp_trans_mg;
+wire [15:0] vp_addr_mg;
+wire  [7:0] vp_data_mg;
+wire        vp_req_ma, vp_rd_ma, vp_trans_ma;
+wire [15:0] vp_addr_ma;
+wire  [7:0] vp_data_ma;
+wire        slave_reset_n_g, slave_nmi_n_g, slave_int_req_g;
+wire        slave_reset_n_a, slave_nmi_n_a, slave_int_req_a;
+wire [15:0] scroll_x_mg, scroll_y_mg, scroll_x_ma, scroll_y_ma;
+wire  [7:0] sound_ctrl_data_g, sound_ctrl_data_a;
+wire        sound_ctrl_wr_g,   sound_ctrl_wr_a;
+wire [15:0] sound_cmd_wr_data_g, sound_cmd_wr_data_a;
+wire        sound_cmd_wr_lo_g, sound_cmd_wr_hi_g, sound_cmd_wr_lo_a, sound_cmd_wr_hi_a;
+wire [15:0] vid_addr_ma;
+wire        vid_addr_wr_ma;
+wire  [7:0] master_bank_ma;
+
+assign master_rom_addr_w = ataxx_sel ? master_rom_addr_a : master_rom_addr_g;
+assign master_rom_req    = ataxx_sel ? master_rom_req_a  : master_rom_req_g;
+assign vp_req_m   = ataxx_sel ? vp_req_ma   : vp_req_mg;
+assign vp_rd_m    = ataxx_sel ? vp_rd_ma    : vp_rd_mg;
+assign vp_trans_m = ataxx_sel ? vp_trans_ma : vp_trans_mg;
+assign vp_addr_m  = ataxx_sel ? vp_addr_ma  : vp_addr_mg;
+assign vp_data_m  = ataxx_sel ? vp_data_ma  : vp_data_mg;
+assign slave_reset_n = ataxx_sel ? slave_reset_n_a : slave_reset_n_g;
+assign slave_nmi_n   = ataxx_sel ? slave_nmi_n_a   : slave_nmi_n_g;
+assign slave_int_req = ataxx_sel ? slave_int_req_a : slave_int_req_g;
+assign scroll_x_m = ataxx_sel ? scroll_x_ma : scroll_x_mg;
+assign scroll_y_m = ataxx_sel ? scroll_y_ma : scroll_y_mg;
+assign sound_ctrl_data   = ataxx_sel ? sound_ctrl_data_a   : sound_ctrl_data_g;
+assign sound_ctrl_wr     = ataxx_sel ? sound_ctrl_wr_a     : sound_ctrl_wr_g;
+assign sound_cmd_wr_data = ataxx_sel ? sound_cmd_wr_data_a : sound_cmd_wr_data_g;
+assign sound_cmd_wr_lo   = ataxx_sel ? sound_cmd_wr_lo_a   : sound_cmd_wr_lo_g;
+assign sound_cmd_wr_hi   = ataxx_sel ? sound_cmd_wr_hi_a   : sound_cmd_wr_hi_g;
+
+// Ataxx master (held in reset unless the loaded game is Ataxx)
+leland_master_ataxx master_ax
+(
+	.clk_sys(clk_sys),
+	.reset(reset | ~cpu_release | ~ataxx_sel),
+	.CE_6M(CE_6M),
+
+	.rom_addr(master_rom_addr_a),
+	.rom_data(master_rom_data_r),
+	.rom_req(master_rom_req_a),
+	.rom_stall(master_rom_stall),
+
+	.wram_addr(wram_addr_ma),
+	.wram_din(wram_din_ma),
+	.wram_we(wram_we_ma),
+	.wram_dout(wram_dout_m),
+
+	.battram_addr(battram_addr_ma),
+	.battram_din(battram_din_ma),
+	.battram_we(battram_we_ma),
+	.battram_dout(battram_dout_m),
+
+	.qram_addr(qram_addr_ma),
+	.qram_din(qram_din_ma),
+	.qram_we(qram_we_ma),
+	.qram_dout(qram_dout_ma),
+
+	.pal_addr(pal_addr_ma),
+	.pal_din(pal_din_ma),
+	.pal_we(pal_we_ma),
+	.pal_dout(pal_dout_ma),
+
+	.vp_req(vp_req_ma),
+	.vp_rd(vp_rd_ma),
+	.vp_trans(vp_trans_ma),
+	.vp_addr(vp_addr_ma),
+	.vp_data(vp_data_ma),
+	.vp_pop(vp_pop_m),
+	.vp_rdata(vp_rdata_m),
+
+	.slave_reset_n(slave_reset_n_a),
+	.slave_nmi_n(slave_nmi_n_a),
+	.slave_int_req(slave_int_req_a),
+	.slave_halt_n(slave_halt_n),
+
+	.vblank(VBlank),
+	.raster_line(raster_line),
+
+	.eeprom_di(eeprom_di_a),
+	.eeprom_clk(eeprom_clk_a),
+	.eeprom_cs(eeprom_cs_a),
+	.eeprom_do(eeprom_do_a),
+
+	.vid_addr(vid_addr_ma),
+	.vid_addr_wr(vid_addr_wr_ma),
+	.scroll_x(scroll_x_ma),
+	.scroll_y(scroll_y_ma),
+	.master_bank_o(master_bank_ma),
+
+	.sound_ctrl_data(sound_ctrl_data_a),
+	.sound_ctrl_wr(sound_ctrl_wr_a),
+	.cmd_wr_data(sound_cmd_wr_data_a),
+	.cmd_wr_lo(sound_cmd_wr_lo_a),
+	.cmd_wr_hi(sound_cmd_wr_hi_a),
+	.response_data(sound_response_data),
+
+	.p1_x(p1_wheel), .p1_y(p1_wheel_y),
+	.p2_x(p2_wheel), .p2_y(p2_wheel_y),
+	.p1_joy(p1_joy), .p2_joy(p2_joy),
+	.service(service)
+);
+
 // Master Z80 (held in reset until cpu_release).
 leland_master master
 (
 	.clk_sys(clk_sys),
-	.reset(reset | ~cpu_release),
+	.reset(reset | ~cpu_release | ataxx_sel),
 	.CE_6M(CE_6M),
 
-	.rom_addr(master_rom_addr_w),
+	.rom_addr(master_rom_addr_g),
 	.rom_data(master_rom_data_r),
 
-	.wram_addr(wram_addr_m),
-	.wram_din(wram_din_m),
-	.wram_we(wram_we_m),
+	.wram_addr(wram_addr_mg),
+	.wram_din(wram_din_mg),
+	.wram_we(wram_we_mg),
 	.wram_dout(wram_dout_m),
 
-	.battram_addr(battram_addr_m),
-	.battram_din(battram_din_m),
-	.battram_we(battram_we_m),
+	.battram_addr(battram_addr_mg),
+	.battram_din(battram_din_mg),
+	.battram_we(battram_we_mg),
 	.battram_dout(battram_dout_m),
 
 	.cram_addr(cram_addr_cpu),
@@ -1191,32 +1377,32 @@ leland_master master
 	.cram_we(cram_we_cpu),
 	.cram_dout(cram_dout_cpu),
 
-	.vp_req(vp_req_m),
-	.vp_rd(vp_rd_m),
-	.vp_trans(vp_trans_m),
-	.vp_addr(vp_addr_m),
-	.vp_data(vp_data_m),
+	.vp_req(vp_req_mg),
+	.vp_rd(vp_rd_mg),
+	.vp_trans(vp_trans_mg),
+	.vp_addr(vp_addr_mg),
+	.vp_data(vp_data_mg),
 	.vp_pop(vp_pop_m),
 	.vp_rdata(vp_rdata_m),
 
-	.slave_reset_n(slave_reset_n),
-	.slave_nmi_n(slave_nmi_n),
-	.slave_int_req(slave_int_req),
+	.slave_reset_n(slave_reset_n_g),
+	.slave_nmi_n(slave_nmi_n_g),
+	.slave_int_req(slave_int_req_g),
 
 	.slave_halt_n(slave_halt_n),
 	.vblank(VBlank),
 	.raster_line(raster_line),
 
-	.eeprom_di(eeprom_di),
-	.eeprom_clk(eeprom_clk),
-	.eeprom_cs(eeprom_cs),
-	.eeprom_do(eeprom_do),
+	.eeprom_di(eeprom_di_g),
+	.eeprom_clk(eeprom_clk_g),
+	.eeprom_cs(eeprom_cs_g),
+	.eeprom_do(eeprom_do_g),
 
 	.vid_addr(vid_addr_m),
 	.vid_addr_wr(vid_addr_wr_m),
 
-	.scroll_x(scroll_x_m),
-	.scroll_y(scroll_y_m),
+	.scroll_x(scroll_x_mg),
+	.scroll_y(scroll_y_mg),
 	.gfxbank(gfxbank_m),
 
 	.p1_pedal(p1_pedal),
@@ -1243,14 +1429,14 @@ leland_master master
 	.p3_joy(p3_joy),
 	.p4_joy(p4_joy),
 
-	.rom_req  (master_rom_req),
+	.rom_req  (master_rom_req_g),
 	.rom_stall(master_rom_stall),
 
-	.sound_ctrl_data(sound_ctrl_data),
-	.sound_ctrl_wr(sound_ctrl_wr),
-	.cmd_wr_data(sound_cmd_wr_data),
-	.cmd_wr_lo(sound_cmd_wr_lo),
-	.cmd_wr_hi(sound_cmd_wr_hi),
+	.sound_ctrl_data(sound_ctrl_data_g),
+	.sound_ctrl_wr(sound_ctrl_wr_g),
+	.cmd_wr_data(sound_cmd_wr_data_g),
+	.cmd_wr_lo(sound_cmd_wr_lo_g),
+	.cmd_wr_hi(sound_cmd_wr_hi_g),
 	.response_data(sound_response_data)
 );
 
@@ -1292,35 +1478,89 @@ rom_line_cache #(
 // master's /MCONT bit 0 (slave_reset_n). The master releases it once it has
 // finished its own initialisation.
 
+wire [18:0] slave_rom_addr_g, slave_rom_addr_a;
+wire        slave_rom_req_g,  slave_rom_req_a;
+wire        slave_halt_n_g,   slave_halt_n_a;
+wire        vp_req_sg, vp_rd_sg, vp_trans_sg, vp_req_sa, vp_rd_sa, vp_trans_sa;
+wire [15:0] vp_addr_sg, vp_addr_sa;
+wire  [7:0] vp_data_sg, vp_data_sa;
+wire [11:0] wram_addr_sg, wram_addr_sa;
+wire  [7:0] wram_din_sg, wram_din_sa;
+wire        wram_we_sg, wram_we_sa;
+
 leland_slave slave
 (
 	.clk_sys(clk_sys),
-	.reset(reset | ~cpu_release | ~slave_reset_n),
+	.reset(reset | ~cpu_release | ~slave_reset_n | ataxx_sel),
 	.CE_6M(CE_6M),
 
-	.rom_addr(slave_rom_addr_w),
+	.rom_addr(slave_rom_addr_g),
 	.rom_data(slave_rom_data_r),
 
-	.vp_req(vp_req_s),
-	.vp_rd(vp_rd_s),
-	.vp_trans(vp_trans_s),
-	.vp_addr(vp_addr_s),
-	.vp_data(vp_data_s),
+	.vp_req(vp_req_sg),
+	.vp_rd(vp_rd_sg),
+	.vp_trans(vp_trans_sg),
+	.vp_addr(vp_addr_sg),
+	.vp_data(vp_data_sg),
 	.vp_pop(vp_pop_s),
 	.vp_rdata(vp_rdata_s),
 
-	.wram_addr(wram_addr_s),
-	.wram_din(wram_din_s),
-	.wram_we(wram_we_s),
+	.wram_addr(wram_addr_sg),
+	.wram_din(wram_din_sg),
+	.wram_we(wram_we_sg),
 	.wram_dout(wram_dout_s),
 
 	.slave_int_req(slave_int_req),
 	.nmi_n(slave_nmi_n),
-	.slave_halt_n(slave_halt_n),
+	.slave_halt_n(slave_halt_n_g),
 
 	.raster_line(raster_line),
 
-	.rom_req  (slave_rom_req),
+	.rom_req  (slave_rom_req_g),
+	.rom_stall(slave_rom_stall)
+);
+
+assign slave_rom_addr_w = ataxx_sel ? slave_rom_addr_a : slave_rom_addr_g;
+assign slave_rom_req    = ataxx_sel ? slave_rom_req_a  : slave_rom_req_g;
+assign slave_halt_n     = ataxx_sel ? slave_halt_n_a   : slave_halt_n_g;
+assign vp_req_s   = ataxx_sel ? vp_req_sa   : vp_req_sg;
+assign vp_rd_s    = ataxx_sel ? vp_rd_sa    : vp_rd_sg;
+assign vp_trans_s = ataxx_sel ? vp_trans_sa : vp_trans_sg;
+assign vp_addr_s  = ataxx_sel ? vp_addr_sa  : vp_addr_sg;
+assign vp_data_s  = ataxx_sel ? vp_data_sa  : vp_data_sg;
+assign wram_addr_s = ataxx_sel ? wram_addr_sa : wram_addr_sg;
+assign wram_din_s  = ataxx_sel ? wram_din_sa  : wram_din_sg;
+assign wram_we_s   = ataxx_sel ? wram_we_sa   : wram_we_sg;
+
+leland_slave_ataxx slave_ax
+(
+	.clk_sys(clk_sys),
+	.reset(reset | ~cpu_release | ~slave_reset_n | ~ataxx_sel),
+	.CE_6M(CE_6M),
+
+	.rom_addr(slave_rom_addr_a),
+	.rom_data(slave_rom_data_r),
+
+	.vp_req(vp_req_sa),
+	.vp_rd(vp_rd_sa),
+	.vp_trans(vp_trans_sa),
+	.vp_addr(vp_addr_sa),
+	.vp_data(vp_data_sa),
+	.vp_pop(vp_pop_s),
+	.vp_rdata(vp_rdata_s),
+
+	.wram_addr(wram_addr_sa),
+	.wram_din(wram_din_sa),
+	.wram_we(wram_we_sa),
+	.wram_dout(wram_dout_s),
+
+	.slave_int_req(slave_int_req),
+	.nmi_n(slave_nmi_n),
+	.slave_halt_n(slave_halt_n_a),
+
+	.raster_line(raster_line),
+
+	.rom_req  (slave_rom_req_a),
 	.rom_stall(slave_rom_stall)
 );
 

@@ -1,6 +1,6 @@
-// Board without the 80186 sound board, for fast runs. From sim/:
-//   vlib work && vlog -mfcu -sv -suppress 2244 +define+SIM_NO_SOUND -f flist_board_nosnd.txt
-//   vsim -c work.leland_board_tb -do "run -all; quit"
+// Ataxx bring-up bench, no sound board, Verilator (from sim/):
+//   verilator --binary --timing -Wno-fatal -DSIM_NO_SOUND -DRUN_LEN_MS=30 --top-module leland_board_ax_tb -f flist_ax_verilator.txt --Mdir verilator/obj_ax -j 16
+//   ./verilator/obj_ax/Vleland_board_ax_tb
 ../rtl/tv80/rtl/core/tv80_alu.v
 ../rtl/tv80/rtl/core/tv80_reg.v
 ../rtl/tv80/rtl/core/tv80_mcode.v
@@ -19,5 +19,5 @@
 ../rtl/mem/leland_dpram.sv
 ../rtl/mem/leland_eeprom_93c46.sv
 ../rtl/mem/leland_eeprom_93c56.sv
-mt48lc16m16a2.v
-leland_board_tb.sv
+mt48lc16m16a2_vl.v
+leland_board_ax_tb.sv

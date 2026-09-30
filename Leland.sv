@@ -268,6 +268,29 @@ steering_input steer3
 	.wheel_pos(p3_wheel_pos)
 );
 
+// Ataxx trackball Y axes
+wire [7:0] p1_wheel_y_pos, p2_wheel_y_pos;
+
+steering_input steer1y
+(
+	.clk_sys(clk_sys), .reset(reset), .ce_frame(ce_frame),
+	.dpad_pos_mode(status[10]),
+	.analog_x(joy1_ana[15:8]),
+	.dpad_left(joy1[3]), .dpad_right(joy1[2]),
+	.spinner(9'd0),
+	.wheel_pos(p1_wheel_y_pos)
+);
+
+steering_input steer2y
+(
+	.clk_sys(clk_sys), .reset(reset), .ce_frame(ce_frame),
+	.dpad_pos_mode(status[10]),
+	.analog_x(joy2_ana[15:8]),
+	.dpad_left(joy2[3]), .dpad_right(joy2[2]),
+	.spinner(9'd0),
+	.wheel_pos(p2_wheel_y_pos)
+);
+
 // Gas: MiSTer has no analog trigger, so it is a digital button (3rd J1 entry) driving the
 // pedal to its two endpoints (0 = released, 255 = full).
 wire [7:0] p1_gas = joy1[6] ? 8'hFF : 8'h00;
@@ -359,6 +382,8 @@ leland_board board
 	.p1_wheel(p1_wheel_pos),
 	.p2_wheel(p2_wheel_pos),
 	.p3_wheel(p3_wheel_pos),
+	.p1_wheel_y(p1_wheel_y_pos),
+	.p2_wheel_y(p2_wheel_y_pos),
 	// Gas: digital button (J1's 3rd entry), 0/255 -- see p1_gas comment above.
 	.p1_pedal(p1_gas),
 	.p2_pedal(p2_gas),
