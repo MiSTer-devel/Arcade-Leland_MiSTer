@@ -47,7 +47,7 @@
 
 module leland_retimer
 #(
-	parameter GAMMA_HEX = "rtl/gamma_inv.hex"
+	parameter GAMMA_HEX = "rtl/video/gamma_inv.hex"
 )
 (
 	input             clk_sys,

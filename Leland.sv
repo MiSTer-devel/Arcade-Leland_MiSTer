@@ -379,7 +379,7 @@ leland_board board
 //----------------------------------------------------------------
 // Video output to MiSTer framework
 //----------------------------------------------------------------
-// CRT retimer (rtl/leland_retimer.sv): by default the output is regenerated at NTSC 240p
+// CRT retimer (rtl/video/leland_retimer.sv): by default the output is regenerated at NTSC 240p
 // (15.73 kHz / 60.03 Hz) from a frame buffer while the game keeps running at its native
 // 65.95 Hz. With Video Timing set to Native the game's own timing goes straight to the
 // framework.

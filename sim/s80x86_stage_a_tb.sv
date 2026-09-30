@@ -1,23 +1,18 @@
-// Stage-A bench (docs/planning_80186_sound.md WP1): s80x86 Core.sv +
+// Stage-A bench: s80x86 Core.sv +
 // flat SOR audiocpu ROM/RAM model, no interrupts, no peripherals. Logs
 // every retired instruction's (CS,IP) to a PC-fetch trace for diffing
-// against a MAME reference trace (see docs/WP0_PROGRESS.md and
-// docs/reference/mame/scripts/wp0_audiocpu_trace.debugscript for the
-// MAME-side methodology this mirrors).
+// against a MAME reference trace.
 //
 // Memory model: single-cycle-ack BRAM-style array, address space per
 // leland_80186_map_program (leland_a.cpp): RAM 0x00000-0x03FFF mirrored
 // x8 up to 0x1FFFF, ROM 0x20000-0xFFFFF identity-mapped from the
 // audiocpu ROM region. I/O-space (d_io) accesses are ACKed with a dummy
 // value -- Stage A only cares about the instruction stream, not
-// peripheral correctness (that's WP6+).
+// peripheral correctness.
 //
 // The ROM image is NOT checked into this repo (copyright) -- regenerate
-// it from the real offroad ROM set via
-// .../scratchpad/wp0_rom/build_audiocpu_image.py +
-// .../scratchpad/wp0_rom/make_readmemh.py (WP0/WP1 scratchpad scripts),
-// then point ROM_HEX_PATH at the resulting .hex file (plusarg or edit
-// below).
+// it from the real offroad ROM set, then point ROM_HEX_PATH at the
+// resulting .hex file (plusarg or edit below).
 
 `timescale 1ns / 1ps
 
@@ -93,8 +88,7 @@ Core dut(.clk(clk),
 // RAM: 16KB, mirrored x8 across 0x00000-0x1FFFF.
 // ROM: 1MB flat image, identity-mapped 0x00000-0xFFFFF within the image
 // (region byte offset == CPU address, per leland.cpp's
-// .region("audiocpu", 0x20000) -- see docs/reference/mame/traces/
-// wp0_offroad_80186_sound_config.md); only 0x20000-0xFFFFF is ever
+// .region("audiocpu", 0x20000)); only 0x20000-0xFFFFF is ever
 // fetched from it (0x00000-0x1FFFF is RAM on the CPU side).
 reg [7:0] ram [0:16383];
 reg [7:0] rom [0:1048575];
@@ -129,14 +123,13 @@ task automatic mem_write_byte(input [19:0] addr, input [7:0] data);
     // ROM writes are dropped (real hardware would ignore them too).
 endtask
 
-// --- Ack timing model (WP1 seam-gate G1: stall tolerance) ---
+// --- Ack timing model (seam-gate G1: stall tolerance) ---
 // Default is single-cycle ack (ack the cycle after access first asserts).
 // +RANDOM_ACK=1 switches to an independently randomized 1-500 cycle ack
 // delay per access on each port (a fresh countdown drawn every time
 // access rises from low), seeded via +ACK_SEED=<n> for reproducibility
-// -- per docs/planning_80186_sound.md §5.1 G1, the seed must be
-// recorded alongside the result, hence the plusarg rather than $random
-// with no seed control.
+// -- the seed must be recorded alongside the result, hence the plusarg
+// rather than $random with no seed control.
 int random_ack_mode;
 int ack_seed;
 initial begin
@@ -296,22 +289,20 @@ initial begin
     reset = 0;
 end
 
-// --- WP9: WAIT (opcode 0x9B) never-dispatched backstop assertion ---
-// WP0 (docs/reference/mame/traces/wp0_offroad_80186_sound_config.md,
-// Q1) found zero WAIT mnemonics in a real 13M-instruction MAME
-// execution trace covering boot through early attract -- concluding the
+// --- WAIT (opcode 0x9B) never-dispatched backstop assertion ---
+// A real 13M-instruction MAME trace found zero WAIT mnemonics in a
+// execution covering boot through early attract -- the
 // core's stock WAIT-as-NOP microcode (rtl/s80x86/microcode/wait.us,
 // `.at 0x9b; next_instruction;`, i.e. no /TEST-gated spin at all) is
-// very likely fine as-is for SOR, but recommending this cheap directed
-// backstop rather than skipping WP9 outright. `Microcode.sv`'s own
+// very likely fine as-is for SOR, so this is a cheap directed
+// backstop. `Microcode.sv`'s own
 // dispatch (`starting_instruction = !stall && (next_addr ==
 // {..., next_instruction_value.opcode})`) confirms the microcode ROM is
 // opcode-address-mapped for simple one-byte opcodes, so a fresh
 // instruction's *decoded* opcode field (`next_instruction_value.opcode`,
 // latched by the real InsnDecoder, not a raw/static byte scan --
-// WP0's own doc flags exactly this static-scan pitfall: "~600 candidate
-// 0x9B hits that turned out to be linear-decode misalignment
-// artifacts") is a reliable, real-time signal for "was WAIT ever
+// a static scan finds ~600 candidate 0x9B hits that are linear-decode
+// misalignment artifacts) is a reliable, real-time signal for "was WAIT ever
 // actually dispatched", sampled at the same `instruction_fifo_rd_en`
 // (dispatch) edge the PC-trace above already uses.
 integer wait_dispatch_count = 0;

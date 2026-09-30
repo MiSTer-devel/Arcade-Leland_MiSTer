@@ -1,18 +1,18 @@
-// Directed integration test for WP8 of docs/planning_80186_sound.md
-// ("internal DMA x2 + system arbiter insertion"): the real i186_periph
-// (WP2-4, now including the WP8 DMA engine + internal second-level
-// MemArbiter) wired to the real leland_sound_board (WP6), same topology
+// Directed integration test for the internal DMA x2 + system arbiter
+// insertion: the real i186_periph
+// (including the DMA engine + internal second-level
+// MemArbiter) wired to the real leland_sound_board, same topology
 // as leland_sound_board_tb.sv's own Stage-C bench, plus a real
 // addressable byte-array memory behind the board's mem_* passthrough
 // port (leland_sound_board_tb.sv's own stub only echoes address bits --
 // not enough to prove DMA actually moves real, distinct source bytes).
 //
 // No real s80x86 Core here -- a BFM drives i186_periph's CPU-side port
-// directly, matching every other WP2-7 bench's own deferral of "real
-// core" to WP10 (leland_sound_smoketest_tb.sv is the one exception, and
-// it's explicitly a smoke test, not this package's acceptance bench).
+// directly, matching the other unit benches' deferral of "real
+// core" (leland_sound_smoketest_tb.sv is the one exception, and
+// it's explicitly a smoke test, not this bench's acceptance criteria).
 //
-// Covers the plan's Stage D criteria (§4.3) as directed, deterministic
+// Covers Stage D criteria as directed, deterministic
 // checks rather than free-running ROM behavior:
 // (a) exactly one DMA byte lands on the DAC per DRQ assertion (the
 //     write-clears-DRQ loop) -- Part 3 (source-sync, real PIT-driven DRQ).
@@ -339,7 +339,7 @@ initial begin
     repeat (5) @(posedge clk);
 
     // ============================================================
-    // Bring-up: RELOC memory mode + PACS/MPCS (same WP0-observed
+    // Bring-up: RELOC memory mode + PACS/MPCS (same MAME-observed
     // values as leland_sound_board_tb.sv's own Part 1) so the external
     // PCS window / dac_w decode is live for the DMA destination writes.
     // ============================================================
@@ -521,7 +521,7 @@ initial begin
     bus_write(mem_internal_addr(8'hC6), 16'h0002, 2'b11, 1'b0); // DST hi = 0x2 (0x20200's upper nibble)
     bus_write(mem_internal_addr(8'hC8), 16'h0001, 2'b11, 1'b0); // count = 1
     // CON: SRC_MIO|SRC_INC|DEST_MIO=1(the ext PCS window IS memory
-    // space per WP0/MPCS bit6)|unsync|TERMINATE_ON_ZERO|CHG_NOCHG|
+    // space per MPCS bit6)|unsync|TERMINATE_ON_ZERO|CHG_NOCHG|
     // ST_STOP|BYTE_WORD(bit0=1)
     bus_write(mem_internal_addr(8'hCA),
               16'h1000 | 16'h0400 | 16'h8000 | 16'h0200 | 16'h0004 | 16'h0002 | 16'h0001, 2'b11, 1'b0);

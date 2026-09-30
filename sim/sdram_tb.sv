@@ -1,5 +1,5 @@
 //============================================================================
-//  sdram_tb.sv — standalone testbench for rtl/sdram.sv
+//  sdram_tb.sv — standalone testbench for rtl/mem/sdram.sv
 //
 //  Drives the SDRAM controller directly (no HPS, no CPUs, no video) against
 //  Micron's official mt48lc16m16a2 behavioral model. This exists because the

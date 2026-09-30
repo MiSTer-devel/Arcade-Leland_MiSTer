@@ -1,18 +1,20 @@
+// Same as flist_board_banked.txt but with the Verilator-clean SDRAM model.
+// Compile from sim/ with the same +incdir+ options, then build with Verilator --timing.
 ../rtl/tv80/rtl/core/tv80_alu.v
 ../rtl/tv80/rtl/core/tv80_reg.v
 ../rtl/tv80/rtl/core/tv80_mcode.v
 ../rtl/tv80/rtl/core/tv80_core.v
-../rtl/tv80s_ce.v
-../rtl/sdram_banked.sv
-../rtl/leland_vram_port.sv
+../rtl/cpu/tv80s_ce.v
+../rtl/mem/sdram_banked.sv
+../rtl/video/leland_vram_port.sv
 ../rtl/leland_board_pkg.sv
-../rtl/rom_line_cache.sv
+../rtl/mem/rom_line_cache.sv
 ../rtl/leland_board.sv
-../rtl/leland_master.sv
-../rtl/leland_slave.sv
-../rtl/leland_video.sv
-../rtl/leland_dpram.sv
-../rtl/leland_eeprom_93c46.sv
+../rtl/cpu/leland_master.sv
+../rtl/cpu/leland_slave.sv
+../rtl/video/leland_video.sv
+../rtl/mem/leland_dpram.sv
+../rtl/mem/leland_eeprom_93c46.sv
 ../rtl/s80x86/config.v
 ../rtl/s80x86/microcode/MicrocodeTypes.sv
 ../rtl/s80x86/FlagsEnum.sv
@@ -71,9 +73,9 @@
 ../rtl/KF8253/KF8253_Control_Logic.sv
 ../rtl/KF8253/KF8253.sv
 ../rtl/KF8253/kf8253_leland_bus.sv
-../rtl/i186_periph.sv
-../rtl/leland_sound_board.sv
-../rtl/leland_dac_mixer.sv
-../rtl/leland_sound.sv
+../rtl/cpu/i186_periph.sv
+../rtl/audio/leland_sound_board.sv
+../rtl/audio/leland_dac_mixer.sv
+../rtl/audio/leland_sound.sv
 mt48lc16m16a2_vl.v
 leland_board_tb.sv

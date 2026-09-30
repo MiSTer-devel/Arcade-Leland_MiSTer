@@ -3,7 +3,7 @@ Structural diff between our sim's raw PC trace and MAME's real captured
 execution trace, to find the first point where our RTL's control flow
 diverges from real hardware.
 
-Real traces (docs/reference/mame/traces/mastertrace.log, slavetrace.log)
+Real traces (docs/reference/mame/traces/mastertrace.log, slavetrace.log; local MAME captures, not in the repo)
 are MAME debugger `trace` output: one "XXXX: mnemonic" line per executed
 instruction, with repeated loops compressed to a single
 "(loops for N instructions)" marker instead of literally repeating N
@@ -21,6 +21,7 @@ iteration-count differences and highlights the first place where our
 sim visits a genuinely different address/region than real execution
 ever did.
 """
+import os
 import re
 import sys
 
@@ -134,7 +135,7 @@ def find_first_divergence(real_seq, sim_seq, context=15, window=20000):
 
 if __name__ == '__main__':
     which = sys.argv[1] if len(sys.argv) > 1 else 'master'
-    base = 'C:/MiSTerDev/SuperOffRoad_MiSTer'
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if which == 'master':
         real_path = f'{base}/docs/reference/mame/traces/mastertrace.log'
         sim_path = f'{base}/sim/master_pc_trace.log'

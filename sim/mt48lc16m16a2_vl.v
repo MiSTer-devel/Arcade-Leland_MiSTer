@@ -1,12 +1,11 @@
 /**************************************************************************
 *
-*  VERILATOR-CLEAN FORK (sim/mt48lc16m16a2_vl.v), created for the
-*  WP-Verilator work package. Derived from Micron's mt48lc16m16a2.v below.
+*  VERILATOR-CLEAN FORK (sim/mt48lc16m16a2_vl.v), derived from Micron's mt48lc16m16a2.v below.
 *  Same module name and port list as the original (including the inout
 *  Dq pin) so it drops into sim/leland_board_tb.sv's `mt48lc16m16a2 chip (...)`
 *  instantiation with NO changes to that testbench. VALIDATED: with this
-*  file swapped in for the original (via sim/flist_board_verilator.txt,
-*  a new file list -- flist_board_banked.txt is untouched), the ORIGINAL
+*  file swapped in for the original (via sim/flist_board_verilator.txt),
+*  the ORIGINAL
 *  unmodified sim/leland_board_tb.sv reports `=== PASS ===` and
 *  `=== RD0CHK_FINAL checks=72 errors=0 ===` under Verilator 5.050
 *  --timing, matching ModelSim's independently-established baseline.

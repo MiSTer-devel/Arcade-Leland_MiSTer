@@ -1,5 +1,5 @@
 //============================================================================
-//  leland_video_tb.sv — standalone testbench for rtl/leland_video.sv
+//  leland_video_tb.sv — standalone testbench for rtl/video/leland_video.sv
 //
 //  Isolates the background ROM-tilemap fetch pipeline from the CPUs/boot
 //  sequence entirely: loads the real bg_gfx/bg_prom ROM chip files
@@ -10,15 +10,13 @@
 //  data and inputs -- without waiting for a full CPU boot (a few real
 //  frames simulate in seconds here, vs minutes for a CPU-driven run).
 //
-//  2026-07-12 session, corrected: the original gfxbank=0x03/scroll=0,0
+//  Corrected: the original gfxbank=0x03/scroll=0,0
 //  values here were WRONG -- traced from an assumption, not verified
-//  MAME I/O traffic, and (per docs/planning.md's later review) the
+//  MAME I/O traffic, and the
 //  original "26,866/26,868 nonzero" pass result they produced was
 //  independently a false positive (tile-0's own plane bytes are
 //  nonzero regardless of correctness, so that count never actually
-//  distinguished working from broken). Both errors are exactly the
-//  "false narrative from incorrectly collected MAME behavior" the
-//  2026-07-12-afternoon docs review flagged.
+//  distinguished working from broken).
 //
 //  Replaced with values captured directly from a live MAME I/O write
 //  watchpoint trace (wpiset on the master CPU's 0x80-0xCF port range,
@@ -68,7 +66,7 @@ wire [9:0]  cram_addr;
 wire [7:0]  cram_data = 8'h00; // palette lookup not needed -- probing bg_pen directly
 wire [23:0] rgb;
 
-// WP-L2: gfx/prom fetch now goes through an SDRAM-style req/ack
+// gfx/prom fetch now goes through an SDRAM-style req/ack
 // handshake (leland_board.sv's rd2 arbiter channel on real hardware).
 // This standalone TB has no arbiter/sdram_simple, so it fakes one
 // directly against the same gfx_rom/prom_rom arrays below, with an
@@ -80,7 +78,7 @@ wire [24:0] sdram_rd2_addr;
 reg         sdram_rd2_ack;
 reg   [7:0] sdram_rd2_data;
 
-// 2026-07-14 session: promoted from hardwired literals to regs so a
+// Promoted from hardwired literals to regs so a
 // single simulation run can sweep multiple (scroll_x, scroll_y,
 // gfxbank) cases -- the original one-shot version only ever exercised
 // the demo-race state (0x140/0x188/0x03), which never touched the
@@ -132,7 +130,7 @@ initial begin
 	// (0x4000-0x7FFF), u69 (0x8000-0xBFFF), u91+u68 empty
 	// (0xC000-0x13FFF), u90 (0x14000-0x17FFF), u67 (0x18000-0x1BFFF),
 	// u89 empty (0x1C000-0x1FFFF). Matches the offsets documented in
-	// mra/SuperOffRoad.mra and this project's own ROM-load comments.
+	// the MRA and this project's own ROM-load comments.
 	for (i = 0; i < 131072; i = i + 1) prom_rom[i] = 8'h00; // NOT 17'h20000 -- overflows a 17-bit literal (needs 18 bits), silently truncates to 0, loop never runs
 	load_file("03-22104-01.u92", 0, 16384);
 	for (i = 0; i < 16384; i = i + 1) prom_rom[17'h4000 + i] = file_buf[i];
@@ -168,7 +166,7 @@ reg        rd2_busy = 1'b0; // sim-only initializer -- an uninitialized reg
 reg  [3:0] rd2_cnt;
 reg [24:0] rd2_addr_lat;
 reg [15:0] sdram_rd2_data16;
-reg [15:0] sdram_rd2_data16_hi; // WP-M8: second burst word of a GFXROW read
+reg [15:0] sdram_rd2_data16_hi; // second burst word of a GFXROW read
 // Edge-detect the request, not level: leland_video's FSM (like every real
 // SDRAM client in this project, see leland_board.sv's arbiter "duplicate-
 // transaction race" comment) holds sdram_rd2_req_r high through the
@@ -194,7 +192,7 @@ always @(posedge clk_sys) begin
 			sdram_rd2_data <= (rd2_addr_lat >= ADDR_PROM_BASE[24:0]) ?
 			                      prom_rom[rd2_addr_lat - ADDR_PROM_BASE[24:0]] :
 			                      gfx_rom [rd2_addr_lat - ADDR_GFX_BASE[24:0]];
-			// Wider-reads path (2026-07-22): this standalone TB has no
+			// Wider-reads path: this standalone TB has no
 			// gfx-repack FSM (that lives in leland_board.sv, exercised by
 			// leland_board_tb.sv's full-board sim instead) -- synthesize the
 			// packed word on the fly from the same flat gfx_rom content
@@ -202,14 +200,14 @@ always @(posedge clk_sys) begin
 			// ADDR_GFXW_BASE, matching rtl/leland_board.sv's repack layout
 			// exactly so anything still reading ADDR_GFXW_BASE gets
 			// identical data either way. Nothing in leland_video.sv's live
-			// fetch path reads this range any more as of WP-M8 (superseded
+			// fetch path reads this range any more (superseded
 			// by ADDR_GFXROW_BASE below), kept only in case anything else
 			// ever exercises it directly.
 			if (rd2_addr_lat >= ADDR_GFXW_BASE[24:0] && rd2_addr_lat < ADDR_GFXROW_BASE[24:0]) begin
 				sdram_rd2_data16 <= {gfx_rom[((rd2_addr_lat - ADDR_GFXW_BASE[24:0]) >> 1) + 17'h8000],
 				                     gfx_rom[ (rd2_addr_lat - ADDR_GFXW_BASE[24:0]) >> 1]};
 			end
-			// WP-M8 (2026-07-24): ADDR_GFXROW_BASE packed entry, same
+			// ADDR_GFXROW_BASE packed entry, same
 			// synthesis idea as ADDR_GFXW_BASE above but 4-byte-aligned
 			// (matching rtl/leland_board.sv's repack FSM RP_WR2/RP_WR3
 			// states) -- word0={plane1,plane0} (identical content to
@@ -263,7 +261,7 @@ integer nonzero_count = 0;
 integer sample_count  = 0;
 integer frame_count   = 0;
 reg vblank_prev;
-// Diversity counters (2026-07-12 session, corrected validation metric):
+// Diversity counters (corrected validation metric):
 // nonzero_count alone was proven a false positive last time -- tile 0's
 // own plane bytes are nonzero regardless of whether addressing/fetch is
 // actually correct, since tile 0 isn't "blank" in gfx_rom, it's real
@@ -321,7 +319,7 @@ end
 integer distinct_tile_code, distinct_pen;
 
 //------------------------------------------------------------------
-// Full-frame PPM dump (2026-07-13 session): the diversity metrics
+// Full-frame PPM dump: the diversity metrics
 // above (distinct_tile_code/distinct_pen) prove the fetch pipeline
 // produces varied, non-degenerate output, but can't detect scrambling
 // (e.g. tiles fetched in the wrong order, or pixels within a tile
@@ -373,7 +371,7 @@ always @(posedge clk_sys) begin
 		if (!ppm_capturing && !ppm_done && frame_count == capture_target_frame &&
 		    dut.hc == 10'd0 && dut.vc == 9'd0)
 			ppm_capturing = 1;
-		// Screen-coordinate indexing (2026-07-14): the pixel pipeline
+		// Screen-coordinate indexing: the pixel pipeline
 		// presents screen pixel N-1 during the hc==N ce window (HBlank/
 		// VBlank/fg vram_latch are all latched from the pre-edge hc, and
 		// the bg path now matches via col_in_tile_d) -- so sample windows

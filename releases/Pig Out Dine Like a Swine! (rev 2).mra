@@ -67,7 +67,7 @@
 	  positions land on BUTTON1, BUTTON2, START1, COIN1, so the stock labels
 	  are wrong, not just vague: "Gas" is really Start, "Start" is really
 	  Coin. (pigout exposing start/coin as mappable J1 buttons is
-	  deliberate, per WP-L3: without a 4th declared button the OSD had
+	  deliberate: without a 4th declared button the OSD had
 	  nothing to bind to bit7, coin stayed low, and the game never left
 	  attract mode.)
 

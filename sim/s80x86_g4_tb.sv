@@ -1,5 +1,5 @@
-// Seam-gate bench for G4 (vector sampling contract, §5.1):
-// docs/planning_80186_sound.md's Core.sv interrupt seam
+// Seam-gate bench for G4 (vector sampling contract):
+// Core.sv interrupt seam
 // (intr/irq[7:0]/inta, no memory arbitration involved -- single-master
 // setup like sim/s80x86_stage_a_tb.sv, not the arbiter topology).
 //
@@ -9,10 +9,9 @@
 // representative vectors, each pointing to a trampoline that writes its
 // own vector number to a fixed RAM mailbox address and IRETs, then STIs
 // and HLTs waiting for interrupts. Program source/assembler is
-// .../scratchpad/g4_asm.py (not committed -- trivially regenerable,
-// see docs/WP1_PROGRESS.md for the exact layout/addresses).
+// not committed -- trivially regenerable.
 //
-// Checks all four G4 sub-properties from §5.1:
+// Checks all four G4 sub-properties:
 // (a) inta pulses exactly one cycle per taken interrupt
 // (b) the handler entered is always the driven vector's
 // (c) corrupting irq[7:0] one cycle after inta never changes the vector
@@ -295,7 +294,7 @@ initial begin
     // sampling" precisely, since intr is level-sensitive and this core
     // samples it continuously while idle: even a 1-cycle-wide pulse is
     // already a real, validly-sampled assertion (and correctly taken --
-    // confirmed separately, see docs/WP1_PROGRESS.md, that is NOT a
+    // confirmed separately, that is NOT a
     // property (d) violation, it's property (d) simply not applying).
     run_withdrawal_trial(8'h08, 0);
     wait_cycles(200);

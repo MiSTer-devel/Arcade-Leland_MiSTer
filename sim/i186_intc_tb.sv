@@ -1,11 +1,10 @@
-// Stage-B-style directed unit test for i186_periph's WP4 interrupt
-// controller (docs/WP4_PROGRESS.md, docs/planning_80186_sound.md WP4
-// row). Drives the CPU-side bus directly via the same BFM pattern as
-// sim/i186_periph_tb.sv (WP2) / sim/i186_timers_tb.sv (WP3), plus
+// Stage-B-style directed unit test for i186_periph's interrupt
+// controller. Drives the CPU-side bus directly via the same BFM pattern as
+// sim/i186_periph_tb.sv / sim/i186_timers_tb.sv, plus
 // directly toggling the intr-controller-specific inputs (int0/int1
 // pins, dma irq stubs, inta).
 //
-// Covers the plan's explicit WP4 acceptance list: priority resolution,
+// Covers: priority resolution,
 // shared timer bit vectors 0x08/0x12/0x13, DMA vectors 0x0A/0x0B,
 // INT0/0x0C, both EOI forms, LTM vs edge request clearing.
 
@@ -204,10 +203,10 @@ initial begin
     bus_write(port_addr(TCUCON), 16'h0000, 2'b11, 1'b1); // priority 0, unmasked
 
     // status bit 0 -> vector 0x08 (drive timer_irq[0] directly via the
-    // testbench's hierarchical access to dut, since driving a full WP3
+    // testbench's hierarchical access to dut, since driving a full
     // timer to elapse is unnecessary complexity for this directed test --
-    // WP3's own suite already proves timer_irq's generation; WP4's job is
-    // proving the status-bit -> vector mapping once the pulse arrives).
+    // i186_timers_tb already proves timer_irq's generation; this test
+    // proves the status-bit -> vector mapping once the pulse arrives).
     // Settle timing: the mutating event (timer_irq -> intc_status) takes
     // 1 cycle to commit, and the rescan it triggers is itself deferred
     // by 1 more cycle (see the "Deferred rescan" note in i186_periph.sv
@@ -250,7 +249,7 @@ initial begin
     check("specific EOI(0x13) clears in_service bit0", intc_in_service_reg[0] == 1'b0);
 
     // =====================================================================
-    // Test 2: DMA vectors 0x0A/0x0B (WP8 stub pulses).
+    // Test 2: DMA vectors 0x0A/0x0B (DMA stub pulses).
     bus_write(port_addr(DMA0CON), 16'h0000, 2'b11, 1'b1); // priority 0
     bus_write(port_addr(DMA1CON), 16'h0001, 2'b11, 1'b1); // priority 1
 
@@ -334,7 +333,7 @@ initial begin
     // not just be programmed at a numerically higher priority: this
     // module deliberately does not preempt an already-presented,
     // not-yet-acked vector even for a later-arriving higher-priority
-    // source (that's the WP1 G4 stability contract -- see this file's
+    // source (that's the G4 stability contract -- see this file's
     // "priority: DMA0 stays blocked..." check below, and i186_periph.sv's
     // module-header note) -- so this test proves priority resolution
     // between two *simultaneously-pending* requests, which requires

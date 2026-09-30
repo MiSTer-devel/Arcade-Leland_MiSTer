@@ -52,10 +52,7 @@ module Core(input logic clk,
             output logic [15:0] debug_val,
             input logic [15:0] debug_wr_val,
             input logic debug_wr_en,
-            // 2026-07-18 (real-hardware "80186 confirmed alive but never
-            // producing DAC writes" investigation, docs/WP10_PROGRESS.md
-            // / docs/WP10_AUDIO_ISSUE_SYNOPSIS.md): a live, non-intrusive
-            // tap of this module's own internal `ip_current` (the IP
+            // A live, non-intrusive tap of this module's own internal `ip_current` (the IP
             // module's `val` output below), for a board-level debug
             // overlay to distinguish genuine forward progress through
             // boot code from a stuck loop. The existing debug_val/

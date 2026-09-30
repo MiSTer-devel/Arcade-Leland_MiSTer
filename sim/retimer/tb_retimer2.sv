@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// Testbench for the DDR3-backed retimer (rtl/leland_retimer.sv).
+// Testbench for the DDR3-backed retimer (rtl/video/leland_retimer.sv).
 //   +vsize=N   OSD V Size index 0..7
 //   +mode=0    frame-coherence pattern (exact, requires vsize=0)
 //   +mode=1    constant colour: every active output pixel must equal it,
@@ -65,7 +65,7 @@ reg  [63:0] ddr_dout = 0;
 reg         ddr_dv   = 0;
 wire        wf_ovf;
 
-leland_retimer #(.GAMMA_HEX("../../rtl/gamma_inv.hex")) dut(
+leland_retimer #(.GAMMA_HEX("../../rtl/video/gamma_inv.hex")) dut(
 	.clk_sys(clk), .stop(1'b0),
 	.g_ce_pix(g_ce), .g_hblank(g_hb), .g_vblank(g_vb), .g_rgb(g_rgb),
 	.vpos(4'd0), .vsize(vsize_i[2:0]),

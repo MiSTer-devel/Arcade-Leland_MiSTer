@@ -1,7 +1,7 @@
 //============================================================================
 //  leland_board_tb.sv — integration testbench for rtl/leland_board.sv
 //
-//  sim/sdram_tb.sv proved rtl/sdram.sv itself correct (4 tests, 20494 checks,
+//  sim/sdram_tb.sv proved rtl/mem/sdram.sv itself correct (4 tests, 20494 checks,
 //  0 errors) against a realistic concurrent-access pattern, yet real hardware
 //  showed no change at all after fixing a real bug found by that testbench.
 //  That means the remaining bug — if any — is in the INTEGRATION layer:
@@ -15,9 +15,8 @@
 //  hammering loop), and drives realistic HPS ioctl signals to load a
 //  the real Master ROM (extracted from offroad.zip, see the 4 filenames
 //  below) — including the same toggle-ioctl_download-between-parts behavior
-//  the real MRA's 4-file Master ROM entry produces, which an earlier
-//  session found and fixed a real bug in (see the "ioctl_download toggles
-//  mid-load" note in leland_board.sv).
+//  the real MRA's 4-file Master ROM entry produces (see the "ioctl_download
+//  toggles mid-load" note in leland_board.sv).
 //
 //  After the load finishes and reset falls, it waits for leland_board's
 //  own internal readback scanner (the same one driving the on-hardware
@@ -30,7 +29,7 @@
 module leland_board_tb;
 
 //----------------------------------------------------------------------
-// Run length (2026-07-24). Was three hardcoded constants (790 ms report
+// Run length. Was three hardcoded constants (790 ms report
 // point, 800 ms run end, 2 s boot-watchdog), which capped every run at
 // ~0.8 s of sim time. That is far short of what the pigout
 // slowdown/artifact investigation needs: reset-to-attract is several
@@ -40,8 +39,7 @@ module leland_board_tb;
 //
 // Beware the wall-clock cost: ModelSim advances this testbench at only
 // ~0.44 ms of sim time per wall-clock second, so RUN_LEN_MS=7000 is
-// roughly 4.4 HOURS. Verilator (see the Verilator notes in
-// docs/SESSION_2026-07-24_PIGOUT_INVESTIGATION_HANDOFF.md) is the way to
+// roughly 4.4 HOURS. Verilator is the way to
 // make runs this long routine rather than overnight.
 //----------------------------------------------------------------------
 `ifndef RUN_LEN_MS
@@ -56,9 +54,8 @@ localparam CLK_PERIOD = 20.83; // 48 MHz -- clk_sys
 reg clk_sys = 0;
 always #(CLK_PERIOD/2) clk_sys = ~clk_sys;
 
-// clk_sdram: phase-shifted 48 MHz PLL output feeding SDRAM_CLK
-// (docs/sdram_plan.md Section 3a; WP-L3's dedicated 96MHz clock/CDC
-// bridge scheme was reverted 2026-07-22). This testbench's Micron-ideal
+// clk_sdram: phase-shifted 48 MHz PLL output feeding SDRAM_CLK.
+// This testbench's Micron-ideal
 // SDRAM model has no realistic setup/hold/tAC margin checking, so it
 // cannot distinguish a correctly- from an incorrectly-phased clk_sdram --
 // this mirror is for documentation/consistency only, not verification.
@@ -123,7 +120,7 @@ leland_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 	.rgb(rgb),
 
 	.p1_btn(4'h0), .p2_btn(4'h0), .p3_btn(`P3BTN),
-	// Hardware-idle values (2026-07-17): SuperOffRoad.sv feeds SIGNED
+	// Hardware-idle values: Leland.sv feeds SIGNED
 	// MiSTer analog (joyX_ana) into these ports; with no stick input
 	// hardware presents 0x00 here, which leland_board's {~msb, [6:0]}
 	// conversion turns into 0x80 at the game-visible ADC ports
@@ -135,7 +132,7 @@ leland_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 
 	.service(`SVC),
 
-	// Debug overlay (2026-07-25) defaults off in sim -- tb doesn't exercise
+	// Debug overlay defaults off in sim -- tb doesn't exercise
 	// the render path, only avoids leaving the port undriven.
 	.show_overlay(1'b0),
 
@@ -159,7 +156,7 @@ mt48lc16m16a2 chip
 //------------------------------------------------------------------
 // Full flat ROM image loaded in one ioctl_download session, matching
 // the MRA's single index="0" entry (16-byte header + canonical
-// leland_board_pkg layout, WP-L1).  Place all files in sim/.
+// leland_board_pkg layout).  Place all files in sim/.
 //
 // Layout (offsets match rtl/leland_board_pkg.sv's canonical ADDR_*
 // values; all addresses below the header are ioctl stream addresses,
@@ -191,7 +188,7 @@ task ioctl_fill_zero(input [26:0] start_addr, input integer len);
 endtask
 
 // Helper: write a fixed 16-byte array literally, starting at flat_addr --
-// used for the WP-L1 board-ID header (rtl/leland_board_pkg.sv HDR_LEN).
+// used for the board-ID header (rtl/leland_board_pkg.sv HDR_LEN).
 task ioctl_load_bytes(input bit [7:0] bytes_ [0:15], input [26:0] start_addr);
 	integer j;
 	begin
@@ -203,7 +200,7 @@ endtask
 
 `ifdef GAMEPLAY_REPRO
 //------------------------------------------------------------------
-// Fast-forward hack (2026-07-12 session): reaching the real-hardware
+// Fast-forward hack: reaching the real-hardware
 // gameplay hang at Master PC $BDAB by actually simulating attract mode
 // takes ~230 emulated seconds (~11 billion clk_sys cycles) in real
 // MAME -- hours of wall-clock RTL sim, impractical to brute-force.
@@ -211,8 +208,7 @@ endtask
 // Instead, force-inject a genuine mid-gameplay snapshot (WRAM +
 // full tv80 register state, both CPUs) captured from a real MAME save
 // state the user played up to (coin, start, name entry, into actual
-// driving). See docs/SESSION_2026-07-12_FINDINGS.md for how this was
-// captured and verified (confirmed bank_reg==0 at capture time via a
+// driving). Verified (confirmed bank_reg==0 at capture time via a
 // byte-exact match of the live $2000-$9FFF window against the flat
 // ROM image -- matches our RTL's power-on-reset default, so no
 // bank-switch state needs forcing).
@@ -248,8 +244,7 @@ task inject_gameplay_snapshot;
 		end
 
 		// Captured live, right at the $BDAB breakpoint itself (zero-input
-		// attract-demo run) -- see docs/reference/mame/traces/bdab_dasm.asm
-		// and docs/SESSION_2026-07-12_FINDINGS.md. Bank window verified
+		// attract-demo run). Bank window verified
 		// bank_reg==2 (byte-exact against the flat ROM once the
 		// cpu_addr[14:0]-masking fix above is applied to both halves of
 		// the $2000-$9FFF window) -- forced explicitly below since it
@@ -338,7 +333,7 @@ task inject_gameplay_snapshot;
 		release dut.slave.slave_cpu.i_tv80_core.IntE_FF2;
 		release dut.slave.slave_cpu.i_tv80_core.IStatus;
 
-		// /MCONT shadow register (rtl/leland_master.sv:513) is never written
+		// /MCONT shadow register (rtl/cpu/leland_master.sv:513) is never written
 		// by boot code in this fast-forward path (we skip boot entirely),
 		// so slave_reset_n (mcont_r[0]) would otherwise stay 0 forever,
 		// holding the Slave CPU in permanent reset. Real hardware would
@@ -382,7 +377,7 @@ endtask
 
 // Helper: read a LOW/HIGH byte-pair of 64KB ROM files and stream them
 // interleaved starting at flat_addr, exactly matching
-// mra/SuperOffRoad.mra's own <interleave output="16"> map="01"/map="10"
+// the MRA's own <interleave output="16"> map="01"/map="10"
 // pairing for the Sound ROM (word k: low file's byte k at flat_addr+2k,
 // high file's byte k at flat_addr+2k+1) -- same interleaving
 // sim/leland_sound_tb.sv's own load_pair task already reconstructs
@@ -528,7 +523,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 6 (docs/SESSION_2026-07-14.md), Task 2 -- organic bank-switch
+// Organic bank-switch
 // monitor: does a real `ld ($C000),a` executed by the tv80 core actually
 // latch dut.slave.bank_reg, with no bus forcing involved? Cheap $display
 // on every bank_reg value change (time, new value, slave PC) plus a
@@ -547,8 +542,8 @@ always @(posedge clk_sys) begin
 end
 
 
-// Follow-up 9b -- does the Slave EVER execute the real title-art blit
-// routine at all? MAME's fg_bitmap_pc_histogram.lua (C:\MiSTerDev\mame)
+// Does the Slave EVER execute the real title-art blit
+// routine at all? MAME's fg_bitmap_pc_histogram.lua
 // pinpoints the routine that produces the bulk of MAME's nonzero
 // fg-bitmap writes to Slave PC 0x07c3-0x0808 (a long unrolled OUTI burst
 // in the Slave's FIXED ROM, ~1074 hits per PC address, ~80-85% nonzero) --
@@ -570,7 +565,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 9c -- OUTI_BLIT_SUMMARY came back visited=0/m1_visits=0: the
+// OUTI_BLIT_SUMMARY came back visited=0/m1_visits=0: the
 // Slave's dispatcher runs (bank_wr_cnt=0x29=41 write events per
 // SLAVE_DBG_FINAL) but never takes the branch leading to the sequential-
 // OUTI blit at 0x0700-0x0850. The dispatcher (entry ~0x0482, containing
@@ -608,7 +603,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 9g -- $EF19 (object-list HEAD pointer, `ld hl,($EF19)` at
+// $EF19 (object-list HEAD pointer, `ld hl,($EF19)` at
 // 0x03d4/0x03de) and $EF37 (current-object shadow, `ld ($EF37),hl` at
 // 0x04a5) -- MAME's ef19_pointer_trace.lua shows EF19 alternating
 // between two list-head pages (e8f8/eaf8, presumably a double-buffered
@@ -626,10 +621,10 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 9f -- periodic WRAM content dump at the object-table
+// Periodic WRAM content dump at the object-table
 // addresses MAME's obj_attr_read_trace/wram_e9_eb_dump identified
 // (E900-E910, E9F0-EA10, EAF0-EB10), mirroring
-// C:\MiSTerDev\mame\wram_e9_eb_dump.lua, to see whether our RTL's WRAM
+// wram_e9_eb_dump.lua, to see whether our RTL's WRAM
 // content at these addresses matches MAME's or diverges (either in the
 // attribute/discriminator bytes themselves, or in whatever "next
 // object" chain-pointer field determines list advancement).
@@ -658,9 +653,9 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 10d -- direct register capture at PC 0x1220 (the `ld (hl),a`
+// Direct register capture at PC 0x1220 (the `ld (hl),a`
 // that writes the E900 discriminator byte), mirroring
-// C:\MiSTerDev\mame\e900_register_trace.lua's direct MAME register read.
+// e900_register_trace.lua's direct MAME register read.
 // MAME's real values at this exact instruction: A=0x04 B=0x04 C=0x08
 // HL=0xe900 DE=0x4000 -- hand-disassembly arithmetic starting from the
 // confirmed command-byte reads predicted B=0x00, contradicting this
@@ -685,8 +680,8 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 10e -- backward register trace across the whole 0x1115-0x1220
-// chain, mirroring mame/b_register_backtrace.lua's 8 checkpoints exactly,
+// Backward register trace across the whole 0x1115-0x1220
+// chain, mirroring a MAME register backtrace's 8 checkpoints exactly,
 // to find the FIRST instruction where our RTL's register state departs
 // from MAME's known-correct sequence:
 //   1115: A=40 B=02 C=e8 HL=e800 DE=4000
@@ -722,12 +717,12 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 9e -- what is HL (the object-table pointer) and the actual
+// What is HL (the object-table pointer) and the actual
 // discriminator byte at (HL) each time the dispatcher reaches 0x05ab?
 // This is the byte whose bits 1-3 (masked 0x0E, then rrca/dec a/jp z at
 // 0x05bc-0x05c2) determine sprite-draw (0x05ec) vs housekeeping
 // (0x152e) -- our RTL takes the housekeeping branch 100% of the time
-// (Follow-up 9d), so this traces WHAT that byte's value actually is and
+// (see the checkpoint histogram below), so this traces WHAT that byte's value actually is and
 // WHERE (HL) points, to see whether the object table itself lacks real
 // sprite entries or whether HL addresses the wrong place.
 reg armed_05ab;
@@ -745,7 +740,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 10 -- command-queue VRAM-port op trace, both sides of the
+// Command-queue VRAM-port op trace, both sides of the
 // Master->Slave sprite-command mailbox. MAME ground truth (mame/
 // slave_cmdread_trace.lua + master_comm_write_trace.lua): each frame the
 // Master writes the per-frame status commands via port 0x0B at PC
@@ -785,7 +780,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 10b -- object-record WRAM traffic. The Follow-up 10 run
+// Object-record WRAM traffic. The command-queue trace above
 // proved the Slave consumes the Master's 8-byte sprite command
 // (02 08 40 40 0f 00 16 00 read from VRAM 0xF000 at the same insertion
 // PCs as MAME) every frame from t~370ms, yet the dispatcher never
@@ -812,7 +807,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 10c -- master vport commit-level probe. Follow-up 10 showed
+// Master vport commit-level probe. The command-queue trace showed
 // every master op3 (port 0x0B) command write is followed 3 clk_sys later
 // by a second popped op writing 0x00 to 0xFFA1 -- an op the Z80 never
 // issued (MAME shows exactly one port write per byte). A q1 entry can
@@ -835,8 +830,8 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 9d -- fine-grained per-PC checkpoint histogram, mirroring
-// MAME's dispatch_checkpoint_histogram.lua (C:\MiSTerDev\mame). MAME's
+// Fine-grained per-PC checkpoint histogram, mirroring
+// MAME's dispatch_checkpoint_histogram.lua. MAME's
 // real trace shows: 26 dispatcher entries reach the first checks
 // (0x05ab-0x05c2), 15 divert to a special-case handler at 0x152e, and
 // the remaining 11 ALL fall through 0x05c5-0x05ec into the real OUTI
@@ -863,7 +858,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 13 -- source-data trace for real VRAM OUT events. Everything
+// Source-data trace for real VRAM OUT events. Everything
 // mechanical (bank-switch arithmetic, VRAM-port encoding/arbitration, the
 // write pipeline) is proven correct; the open question per the user's
 // synthesis is whether the DATA fed into a real OUT is correct -- either
@@ -915,12 +910,11 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 12b -- PC=0x10EC / H=$EC checkpoint, the newly-confirmed
+// PC=0x10EC / H=$EC checkpoint, the newly-confirmed
 // REAL dispatch path (command-type-2 via 0x10CC's `and $07` check,
-// C:\MiSTerDev\mame\slave_trace.txt: 22/22 real executions of the
+// slave_trace.txt: 22/22 real executions of the
 // shared 0x1100-0x1220 routine were reached this way, H always $EC,
-// never $E9 -- superseding the retracted E900-centric Follow-up 9/10
-// narrative). Checks whether our RTL's Slave ever takes this same path
+// never $E9). Checks whether our RTL's Slave ever takes this same path
 // at all, and with the same H value.
 integer f12b_10ec_hits = 0;
 reg [7:0] f12b_h_at_10ec_last;
@@ -941,7 +935,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 12c -- full VRAM-port pipeline counter: Slave OUT attempts,
+// Full VRAM-port pipeline counter: Slave OUT attempts,
 // Master OUT attempts, vp_req (new-request events), vp_pop (drained
 // events), vram_we_cpu (actual shared-BRAM writes). Counts at each
 // pipeline stage over the same run to localize exactly where write
@@ -984,11 +978,11 @@ always @(posedge clk_sys) begin
 	if (dut.vram_we_cpu) f12c_vram_we = f12c_vram_we + 1;
 end
 
-// Follow-up 14 -- targeted follow-on to Follow-up 12b's confirmed real
+// Targeted follow-on to the confirmed real
 // dispatch path (0x10CC's `and $07`==2 check -> 0x10EC, H=$EC, per MAME's
 // full slave_trace.txt: 22/22 real executions). Three cheap additions:
 // (1) $EF04 state-vector, log-on-change (same technique already proven for
-//     $EF19/$EF37 in Follow-up 9g) -- shows whether the per-tick dispatch
+//     $EF19/$EF37 above) -- shows whether the per-tick dispatch
 //     coroutine's own state cycles normally or gets stuck in one state;
 // (2) a denominator counter at 0x10CC itself (every time the command-type
 //     byte is tested at all, whether or not it takes the 0x10EC branch) --
@@ -996,7 +990,7 @@ end
 //     comparable to MAME's;
 // (3) a counter at 0x1591 (the `call $04C3` recursion inside the 0x152e
 //     housekeeping handler that advances to the next table entry each
-//     tick, per docs/SESSION_2026-07-14.md's disassembly) -- MAME also
+//     tick) -- MAME also
 //     takes this path on every housekeeping (non-sprite) entry, so a high
 //     count alone doesn't distinguish good/bad; what matters is whether it
 //     EVER stops firing (matching the "OBJ_ATTR_READ stops after
@@ -1023,7 +1017,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 17 -- who calls into the 0x6100-0x6300 neighborhood? Rather
+// Who calls into the 0x6100-0x6300 neighborhood? Rather
 // than trust hand-disassembly of the surrounding bytes (which already
 // turned out to be a tiny reusable "read VRAM byte" helper at 0x6129,
 // not obviously "the" mailbox writer itself -- see the doc), this just
@@ -1071,24 +1065,23 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 18 -- the Slave-side counterpart to Follow-up 17. The user
-// confirmed the Master-side mailbox-writer chase (Follow-up 14-17) was a
+// The Slave-side counterpart to the Master PC-entry trace above. The
+// Master-side mailbox-writer is a
 // red herring (MAME's own real cold boot also retires it within 36ms) --
-// the real, never-retracted lead is docs/SESSION_2026-07-14.md's
-// Follow-up 9 finding: our RTL's Slave dispatcher takes the housekeeping
+// the real lead: our RTL's Slave dispatcher takes the housekeeping
 // branch 100% of the time at its discriminator check (0x05bc), never
 // once decoding a real sprite entry (HL stuck at 0xe9f8 forever, per the
 // existing OBJ_ATTR_READ trace above). Hand-disassembly of the
 // candidate chain-walk region (0x03d3-0x04a8) hit a wall there (EX
 // AF,AF'/EXX shadow-register tricks, bit-manipulated address math) and
-// was marked "diminishing returns" in that doc. Rather than keep
+// was abandoned. Rather than keep
 // guessing from static bytes, this dumps the Slave's FULL live register
 // state (PC, HL, DE, BC, shadow HL'/DE'/BC', AF) at every M1 fetch
 // while PC is in the 0x03d0-0x0500 candidate range, for the first three
 // times that range is entered only (kept short and readable on purpose
 // -- this is meant to be read by eye, not aggregated) -- ground truth
 // from our OWN RTL's actual execution, no disassembly assumptions
-// needed, mirroring the technique that worked well for Follow-up 17.
+// needed, mirroring the Master PC-entry trace above.
 integer f18_window_count = 0;
 reg     f18_in_window = 1'b0;
 integer f18_addr_hits = 0;
@@ -1123,11 +1116,11 @@ always @(posedge clk_sys) begin
 		end
 	end
 end
-// Follow-up 18b -- direct write-tap on the two exact link-byte
+// Direct write-tap on the two exact link-byte
 // addresses (0xE8F9/0xEAF9, offsets 0x8F9/0xAF9 from WRAM base 0xE000)
-// that Follow-up 18 proved are read as 0xFF on every single chain-walk
+// that the register dump above showed are read as 0xFF on every single chain-walk
 // attempt for the entire run. If the Slave (the code with private WRAM
-// ownership of this table, per rtl/leland_slave.sv's WRAM map) ever writes
+// ownership of this table, per rtl/cpu/leland_slave.sv's WRAM map) ever writes
 // a non-FF value here, this will show it -- and if it never fires at
 // all, that's direct, disassembly-independent proof the write is
 // simply missing.
@@ -1141,10 +1134,10 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 19 -- review-suggested probe: the link-byte theory
-// (Follow-up 18/18b) was ruled out on both sides (E8F9/EAF9 stay 0xFF in
+// Probe: the link-byte theory
+// was ruled out on both sides (E8F9/EAF9 stay 0xFF in
 // both RTL and MAME), but a separate, still-unexplained WRAM content
-// divergence exists at 0xE900 (docs/SESSION_2026-07-14.md): MAME's real
+// divergence exists at 0xE900: MAME's real
 // content there is `04 80 0c be 9d 9f 98 d0` (attr=0x04, real-sprite
 // discriminator); our RTL's is `80 80 00 00` -- a record that would
 // fail the dispatcher's earliest reject check regardless of whether the
@@ -1170,10 +1163,10 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 20 -- MAME-reference disassembly of the two write sites
-// found by Follow-up 19 (0x1120-0x1150 and 0x1210-0x1240 in the real
+// MAME-reference disassembly of the two write sites
+// found by the E900 write trace above (0x1120-0x1150 and 0x1210-0x1240 in the real
 // ROM) shows: PC=0x1220 is `ld (hl),a` where A was just loaded from B
-// (the command-type byte established since Follow-up 14) -- this is
+// (the command-type byte established earlier) -- this is
 // THE write that lands on E900. PC=0x1229 (`ld (hl),a` after `inc l`,
 // A built from `ld a,c; add a,a x4; and $e0`) is the E901 write, and it
 // already matches MAME exactly (both write 0x80), so C is not the
@@ -1204,8 +1197,8 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 21 -- Follow-up 20 proved B=0x00 at every single visit to
-// 0x1220 (23/23), yet Follow-up 14 already showed B alternates 0x02/0x00
+// B=0x00 at every single visit to
+// 0x1220 (23/23), yet B already alternates 0x02/0x00
 // at 0x10EC (the command-type check) matching the same e900/e8f9
 // alternation. So on the "real sprite" pass, B legitimately starts as
 // 0x02 at 0x10EC but has become 0x00 by 0x1220 -- it's cleared (or
@@ -1233,7 +1226,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 22 -- MAME's live register trace + a direct check of the
+// MAME's live register trace + a direct check of the
 // real ROM chip content (via MAME's own :slave region reader) both
 // confirm: the byte at flat address 0x50000 (bank_reg=8, cpu_addr=
 // 0x4000, i.e. `ld a,(de)` at Slave PC 0x11ec/0x11fa) is genuinely
@@ -1241,7 +1234,7 @@ end
 // something else there, it's a real SDRAM/bank-read correctness bug,
 // not a data-population or register-flow issue. Traces every completed
 // banked-ROM read (rom_read_cyc && ~rom_stall, the same technique
-// Follow-up 13 already used) whose CPU-side address is 0x4000-0x4003
+// as the source-data trace above) whose CPU-side address is 0x4000-0x4003
 // (a few bytes of margin) while bank_reg==8, logging the actual flat
 // rom_addr and the byte returned, to compare directly against the
 // confirmed-correct 0x04.
@@ -1257,10 +1250,10 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 15 -- Follow-up 14 established that BOTH the housekeeping
+// The counters above established that BOTH the housekeeping
 // recursion (0x1591) and the real dispatch (0x10EC) go silent at the same
 // t~552ms moment, and that the boot-window command-writer PCs (0x61A0-
-// 0x61C8/0x6238-0x6290, Follow-up 10's F10_MWR) stop being OUT'd from at
+// 0x61C8/0x6238-0x6290, F10_MWR) stop being OUT'd from at
 // t=537749436ns (488 total) -- consistent with the Slave simply running
 // dry. But F12C_PIPELINE's *unrestricted* master_out=1333 (all-PC, not
 // range-gated) is far larger than F10_MWR's range-gated 488 -- meaning the
@@ -1287,7 +1280,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 16 -- stale VRAM-port read checker, per the review's
+// Stale VRAM-port read checker, per the review's
 // hypothesis: leland_vram_port.sv's vp_stall drops (releasing the Z80's
 // /WAIT) as soon as io_rd_done latches on rd_commit, which can happen
 // BEFORE leland_board's sequencer actually pops the queued read op and
@@ -1337,8 +1330,8 @@ always @(posedge clk_sys) begin
 	io_rd_prev_s <= dut.slave.io_rd;
 end
 
-// Follow-up 9 -- fg-bitmap VRAM write ground-truth comparison. MAME's
-// fg_bitmap_early_boot_trace.lua (C:\MiSTerDev\mame) shows real writes to
+// Fg-bitmap VRAM write ground-truth comparison. MAME's
+// fg_bitmap_early_boot_trace.lua shows real writes to
 // the visible fg bitmap (VRAM addr 0x0000-0xEFFF, i.e. NOT the >=0xF000
 // mailbox slots the earlier CRAM/bank-switch traces focused on) start at
 // frame 0 and taper to zero by frame ~36 (title/hints art fully blitted
@@ -1438,7 +1431,7 @@ always @(posedge clk_sys) begin
 	// RUN_LEN_MS run captures a frame near ITS end (i.e. in attract/gameplay)
 	// instead of during early boot.
 	//
-	// MARGIN (2026-07-24, learned the hard way): must be at least TWO frames.
+	// MARGIN (learned the hard way): must be at least TWO frames.
 	// A frame is 424*256/7.159 MHz = 15.16 ms, and arming happens at the first
 	// VBlank rise AFTER the threshold, so a 20 ms margin can leave as little as
 	// ~5 ms -- not enough. The first 30 s run armed at t=29.988 s with only
@@ -1613,10 +1606,10 @@ initial begin
 	          rd2_missed_deadlines, rd2_max_wait, RD2_DEADLINE_CYCLES);
 end
 
-// WHOLE-TILE-FETCH deadline monitor (2026-07-22): the rd2_wait_cnt monitor
+// WHOLE-TILE-FETCH deadline monitor: the rd2_wait_cnt monitor
 // above resets on every sdram_rd2_ack, so it only ever measures a SINGLE
 // one of the 4 serialized SDRAM reads (prom + 3 gfx planes) per tile
-// fetch (rtl/leland_video.sv's fetch_ph drops sdram_rd2_req_r for exactly
+// fetch (rtl/video/leland_video.sv's fetch_ph drops sdram_rd2_req_r for exactly
 // one cycle between each sub-read -- see FP_PROM_WAIT/FP_GFX0_WAIT/etc).
 // That is a real blind spot: the actual correctness deadline is that ALL
 // 4 reads finish within the 54-cycle arm-to-commit budget, not that each
@@ -1624,7 +1617,7 @@ end
 // monitor can show "missed=0" while the tile as a whole blows the budget.
 // This tracks from the cycle fetch_ph leaves FP_IDLE (arm fires) to the
 // cycle it returns to FP_IDLE (all 4 reads done), the true quantity
-// rtl/leland_video.sv's commit-gate fix (2026-07-22, gating the tile commit
+// rtl/video/leland_video.sv's commit-gate fix (gating the tile commit
 // on fetch_ph==FP_IDLE) depends on landing inside budget.
 integer tile_fetch_cyc;
 integer tile_fetch_max;
@@ -1659,7 +1652,7 @@ end
 
 `ifdef RD2_STRESS
 // ============================================================
-// RD2_STRESS -- synthetic adversarial rd0/rd1/rd3 traffic (2026-07-21).
+// RD2_STRESS -- synthetic adversarial rd0/rd1/rd3 traffic.
 //
 // WHY: the coordinator's request was to stress the rd2_age_cnt/rd2_boost
 // aging-arbiter margin (rtl/leland_board.sv) under WORST-CASE rd0/rd1/rd3
@@ -1753,7 +1746,7 @@ end
 // distribution) even if the $5C00-$5F7F window is never hit.
 // sim/ instrumentation only -- rtl/ is untouched.
 //
-// dut.master.m1_fetch_now (rtl/leland_master.sv) = mem_access & ~m1_n &
+// dut.master.m1_fetch_now (rtl/cpu/leland_master.sv) = mem_access & ~m1_n &
 // ~rom_stall is the same fetch strobe the runaway-PC-trap logic uses
 // to catch "one event per opcode fetch" (see the comment above
 // prev_m1_pc in leland_master.sv) -- the tv80 holds m1_n low across
@@ -2017,7 +2010,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Follow-up 8 (docs/SESSION_2026-07-14.md) -- cram_we / mcont_r[1] gating
+// cram_we / mcont_r[1] gating
 // fix evidence. The fix added `& mcont_r[1]` to leland_master.sv's cram_we
 // (matching MAME's m_palette_view select(0)/disable() in
 // leland_master_output_w case 0x09), on the hypothesis that ungated
@@ -2080,11 +2073,11 @@ integer opcode_trace_count_m = 0, opcode_trace_count_s = 0;
 // that: log every clk_sys cycle where PC actually changes value. This
 // gives the exact control-flow address sequence with zero ambiguity,
 // diffable directly against the address column of
-// docs/reference/mame/traces/mastertrace.log / slavetrace.log.
+// MAME's mastertrace.log / slavetrace.log.
 // Gated on the RISING edge of "in an M1 opcode-fetch cycle" (not just
 // any PC change) so this only logs one address per REAL instruction
 // boundary -- matching the granularity of MAME's own debugger `trace`
-// output (docs/reference/mame/traces/*.log), which likewise only shows
+// output, which likewise only shows
 // one line per executed instruction, not one per byte fetched. An
 // earlier version logged on every PC register change, which also
 // captures operand-byte fetches for multi-byte instructions (PC
@@ -2277,7 +2270,7 @@ always @(posedge clk_sys) begin
 end
 
 //------------------------------------------------------------------
-// NMI wiring verification probe (2026-07-14 fix): rtl/leland_slave.sv's
+// NMI wiring verification probe: rtl/cpu/leland_slave.sv's
 // tv80 core previously had nmi_n hardwired 1'b1 (dead wire), so the
 // Slave's NMI handler ($0066: increments WRAM $EF06) could never run
 // and $EF06 could never move off its reset value of 0x00. Watch $EF06
@@ -2325,7 +2318,7 @@ final begin
 end
 
 //------------------------------------------------------------------
-// DIRECTED NMI STIMULUS (2026-07-14, TEST-ONLY -- not RTL behavior):
+// DIRECTED NMI STIMULUS (TEST-ONLY -- not RTL behavior):
 // the passive probe above watches for the Master's own firmware to
 // clear /MCONT bit2 organically, but this TB's ~900ms boot/idle
 // window never does so (confirmed by decoding every observed /MCONT
@@ -2335,7 +2328,7 @@ end
 // evidence the fix is broken. To actually exercise the new nmi_n
 // wiring, force/release the Master's own `mcont_r[2]` shadow bit --
 // the exact storage element `assign slave_nmi_n = mcont_r[2]` reads
-// from in rtl/leland_master.sv -- to inject one realistic ASSERT-then-
+// from in rtl/cpu/leland_master.sv -- to inject one realistic ASSERT-then-
 // CLEAR NMI edge once boot has settled, then confirm $EF06 (the
 // Slave's NMI-handler counter, rtl disassembly: $0066 increments it)
 // moves as a direct, immediate result. Real hardware's actual NMI
@@ -2362,16 +2355,15 @@ initial begin
 end
 
 //------------------------------------------------------------------
-// VRAM PORT OP-BY-OP + OTIR-BURST DIRECTED TEST (2026-07-14, TEST-ONLY,
-// not RTL behavior). Follow-up 4 (docs/SESSION_2026-07-14.md) named the
+// VRAM PORT OP-BY-OP + OTIR-BURST DIRECTED TEST (TEST-ONLY,
+// not RTL behavior). The
 // Master's OTIR VRAM burst-write routines (0x612c-0x6151 family, real
 // port 0x0B = op3/inc/non-trans) and the Slave-only transparent-write
-// ops (SEQ_TRD/TPOP/TWR/TWPOP in rtl/leland_board.sv) as the next suspect
-// for the hardware garbage-spray symptom, and noted neither had been
-// exercised by any sim run so far -- only small mailbox clear/poll
-// traffic had been traced up to that point.
+// ops (SEQ_TRD/TPOP/TWR/TWPOP in rtl/leland_board.sv) are suspects
+// for the hardware garbage-spray symptom; organic boot traffic only
+// exercises small mailbox clear/poll traffic.
 //
-// This drives rtl/leland_vram_port.sv's Slave instance (dut.slave.vport,
+// This drives rtl/video/leland_vram_port.sv's Slave instance (dut.slave.vport,
 // TRANS_EN=1) directly at its I/O boundary -- forcing
 // cpu_addr/cpu_dout/io_wr/io_rd/io_vram_sel exactly as a real OUT/IN
 // ($xx) bus cycle would present them to the module, honoring vp_stall
@@ -2393,7 +2385,7 @@ end
 // PASS = every byte lands at exactly the address this testbench's own
 // reference model (mirroring MAME leland_v.cpp's vram_port_r/w
 // addressing/merge math, already audited byte-for-byte equivalent to
-// rtl/leland_vram_port.sv in an earlier session) predicts, with no
+// rtl/video/leland_vram_port.sv) predicts, with no
 // drop/duplicate, under both pacings.
 //
 // Gated behind +define+VPTEST: the test freezes and later un-freezes
@@ -2449,7 +2441,7 @@ endtask
 
 // Reference model for op3's address math -- mirrors MAME leland_v.cpp
 // exactly (`addr += inc & (addr << 1); addr ^= 1;`) and
-// rtl/leland_vram_port.sv's addr_op3_next: increment (+2) lands only when
+// rtl/video/leland_vram_port.sv's addr_op3_next: increment (+2) lands only when
 // inc is requested AND the address is currently odd, then bit0 toggles.
 function automatic [15:0] vp_ref_op3_next(input [15:0] a, input inc);
 	vp_ref_op3_next = (a + ((inc && a[0]) ? 16'd2 : 16'd0)) ^ 16'd1;
@@ -2613,7 +2605,7 @@ initial begin
 	// faster than any real "otir" loop, deliberately hammering the
 	// 2-deep queue's vp_stall backpressure. PASS here (no drop/duplicate
 	// even under this unrealistic pacing) is the strongest evidence the
-	// queue's "hold, never drop" contract (leland_vram_port.sv's 2026-07-12
+	// queue's "hold, never drop" contract (leland_vram_port.sv's
 	// header note) actually holds. ---
 	force dut.slave.vport.addr_q = 16'h7100;
 	@(posedge clk_sys);
@@ -2648,8 +2640,8 @@ end
 `endif // VPTEST
 
 //------------------------------------------------------------------
-// SLAVE ROM BANK-MAP DIRECTED TEST (2026-07-15, TEST-ONLY, not RTL
-// behavior). Follow-up 5 (docs/SESSION_2026-07-14.md) found rtl/leland_slave.sv
+// SLAVE ROM BANK-MAP DIRECTED TEST (TEST-ONLY, not RTL
+// behavior). rtl/cpu/leland_slave.sv
 // had been implementing MAME leland.cpp's slave_small_map_program (bank
 // register at memory 0xF803, 48 KB banked window at 0x2000-0xDFFF), but
 // offroad's machine config (`lelandi`) actually installs
@@ -2658,7 +2650,7 @@ end
 // arithmetic 0x10000+0x8000*(data&0xF) (MAME leland_m.cpp
 // slave_large_banksw_w) instead of the old ad-hoc bank0->0x30000 LUT.
 // Since the ROM's own bank-switch sites (`ld ($C000),a`, nine of them
-// per docs/reference/mame/traces/slavedump.asm) never touched F803, the
+// in the slave ROM) never touched F803, the
 // bank register in the old RTL never changed and every banked read used
 // the wrong base -- explaining the missing Ironman portrait/checkered
 // flag, boxy car sprites, and race-end garbage spray.
@@ -2810,7 +2802,7 @@ end
 `endif // SLAVEBANKTEST
 
 // ============================================================
-// WP-M0: Open-row baseline measurement.
+// Open-row baseline measurement.
 //
 // Counts SDRAM ACTIVATE and READ commands observed on the physical pins,
 // broken down by bank, to quantify how many activates happen per read
@@ -2865,7 +2857,7 @@ endtask
 initial begin #REPORT_AT_NS; wpm0_report(); end
 
 //======================================================================
-// Master-Z80 stall census (2026-07-24, "pigout runs slower than MAME")
+// Master-Z80 stall census ("pigout runs slower than MAME")
 //
 // Screen timing and CPU clock are both already confirmed exact against
 // MAME (7.159 MHz pixel clock / 424x256 => 65.955 Hz; master Z80 at
@@ -2900,7 +2892,7 @@ initial begin
 	stall_census_arm = 0;
 end
 
-// CORRECTION (2026-07-24, after the first offroad run): arming on
+// CORRECTION: arming on
 // !ioctl_download was WRONG for the gfx census. leland_video is held in reset
 // until `video_release` (~155 ms, gated on repack_done -- see
 // rtl/leland_board.sv:1709-1712, "hc/vc are held at 0 the entire time"), so
@@ -2927,8 +2919,7 @@ always @(posedge clk_sys) begin
 end
 
 //======================================================================
-// SLAVE-Z80 stall census (2026-07-24, added after the master census came
-// back at 0.012% yet the user still reports pigout "feels slower")
+// SLAVE-Z80 stall census
 //
 // WHY THIS EXISTS -- the master census has a blind spot. It measures only
 // the MASTER losing cycles to memory waits. Three ways to be slow that it
@@ -2936,7 +2927,7 @@ end
 //   1. The master polls a handshake and the RESPONDER is slow. The master
 //      is executing, not stalled -- full speed by that metric.
 //   2. The SLAVE is the bottleneck. It has its own independent stall path
-//      (rtl/leland_slave.sv:129) which nothing was measuring.
+//      (rtl/cpu/leland_slave.sv:129) which nothing was measuring.
 //   3. Per-frame work overruns the frame, so game logic slips to every
 //      other vblank -- a ~50% speed drop with zero memory stalls.
 //
@@ -3014,8 +3005,7 @@ endtask
 initial begin #REPORT_AT_NS; stall_report(); end
 
 //======================================================================
-// PER-FRAME SLACK instrumentation (2026-07-25, STEP 2 of the
-// docs/SESSION_2026-07-24_PIGOUT_INVESTIGATION_HANDOFF.md re-prioritization).
+// PER-FRAME SLACK instrumentation.
 //
 // The stall census above answers "what fraction of CE_6M ticks are lost to
 // SDRAM contention" -- a THROUGHPUT number. It does NOT answer whether that
@@ -3038,7 +3028,7 @@ initial begin #REPORT_AT_NS; stall_report(); end
 //======================================================================
 localparam integer PCWIN = 64;              // M1-fetch window sampled before each VBlank rise
 localparam integer SPIN_UNIQUE_THRESH = 16; // <= this many distinct PCs in the window => "spinning" (has slack)
-// (2026-07-25: raised from 8 -- the first real run showed active gameplay's own
+// (Threshold is 16, not 8: active gameplay's own
 // steady-state poll loop uses 9-11 distinct PCs, which an 8-threshold mislabeled
 // as "saturated." 16 gives margin above that while still well below the 64-cap
 // that genuine end-to-end saturation approaches. Read the raw unique_pc_last64
@@ -3163,7 +3153,7 @@ endtask
 initial begin #REPORT_AT_NS; fslack_report(); end
 
 //======================================================================
-// SLAVE per-frame slack census (2026-07-25) -- mirrors the master fslack_*
+// SLAVE per-frame slack census -- mirrors the master fslack_*
 // block above using the SAME VBlank-rise frame boundary, but tracks the
 // SLAVE Z80 (dut.slave.*). The slave is Leland's drawing CPU and sits on
 // the master<->slave VRAM mailbox handshake, so it's the biggest gap left
@@ -3262,7 +3252,7 @@ endtask
 initial begin #REPORT_AT_NS; sfslack_report(); end
 
 //======================================================================
-// MASTER PC time-weighted histogram (2026-07-25) -- "where does the master
+// MASTER PC time-weighted histogram -- "where does the master
 // actually spend its cycles." fslack_* answers "does the master reach a
 // wait loop before VBlank"; this answers "if it's not stalled on SDRAM and
 // not obviously spinning, what IS it doing" -- specifically, whether cycles
@@ -3325,7 +3315,7 @@ endtask
 initial begin #REPORT_AT_NS; pc_tick_report(); end
 
 //======================================================================
-// MASTER ROM-stall WAIT-LENGTH histogram (2026-07-25) -- averages hide
+// MASTER ROM-stall WAIT-LENGTH histogram -- averages hide
 // bimodal behaviour. The master stall census gives one aggregate percentage;
 // this buckets each individual (rom_req & rom_stall) episode by how many
 // consecutive CE_6M ticks it lasted. Directly targets the still-unexplained
@@ -3401,7 +3391,7 @@ endtask
 initial begin #REPORT_AT_NS; wlen_report(); end
 
 //======================================================================
-// $E127/$E128/$E957 write trace (2026-07-25) -- chasing the ~51%-of-cycles
+// $E127/$E128/$E957 write trace -- chasing the ~51%-of-cycles
 // wait loop at 0xc6fc found by the PC-time histogram. MAME disassembly
 // (real ROM, hand-decoded) showed the loop's PREAMBLE is actually:
 //   LD HL,(0xE127) / XOR A / SBC HL,BC / LD (0xE127),HL / EI / LD BC,0x240F
@@ -3446,7 +3436,7 @@ always @(posedge clk_sys) begin
 end
 
 //======================================================================
-// Background tile-row FIFO underrun census (2026-07-24)
+// Background tile-row FIFO underrun census
 //
 // Unlike the CPU, the video path CANNOT stall -- pixel timing is fixed,
 // so when leland_video's tile-row ring buffer is empty at a pop deadline it
@@ -3503,7 +3493,7 @@ always @(posedge clk_sys) begin
 					gfx_ln_counted  <= 1'b1;
 				end
 				// Per-scanline histogram + the hc of the first underrun on each
-				// line. Hardware screenshots (2026-07-24) show the pigout
+				// line. Hardware screenshots show the pigout
 				// artifact as a ONE-SCANLINE-TALL horizontal run at the LEFT
 				// edge, at a fixed vertical position just above the HUD --
 				// which predicts underruns CLUSTERED at one vc with small hc,
@@ -3557,7 +3547,7 @@ initial begin
 
 `ifdef PIGOUT_ROMS
 	//==================================================================
-	// pigout.zip load map -- transcribed 1:1 from mra/PigOut.mra's
+	// pigout.zip load map -- transcribed 1:1 from the Pig Out MRA's
 	// index="0" part list (the shipping, hardware-confirmed layout), with
 	// each MRA <part>/<part repeat>/<interleave> becoming the equivalent
 	// ioctl_load_file/ioctl_fill_zero/ioctl_load_pair call at the same
@@ -3572,7 +3562,7 @@ initial begin
 	// Header: magic 'L', version 1, board_class=GEN3_LELANDI(3),
 	// game_id=GAME_PIGOUT(2), input_scheme=JOY4_DIGITAL(1),
 	// flags=0x10 (FLAG_IN4_PORT -- fixed IN4 @ raw 0x7F, single I/O
-	// window). Byte-for-byte the <part> on mra/PigOut.mra line 11.
+	// window). Byte-for-byte the <part> in the Pig Out MRA.
 	$display("t=%0t  Header (pigout)...", $time);
 	ioctl_load_bytes('{8'h4C, 8'h01, 8'h03, 8'h02, 8'h01, 8'h10, 8'h00, 8'h00,
 	                   8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00}, 27'h000000);
@@ -3586,7 +3576,7 @@ initial begin
 	// ── Slave Z80 ROM @ ADDR_SLAVE_BASE. NOTE the 0xE000 gap (not
 	// offroad's 0x2E000) -- MAME's real ROM_START(pigout) puts the banked
 	// files at region-relative 0x10000. This is the hardware-confirmed
-	// WP-L3 gap fix; getting it wrong shifts every bank_reg-selected
+	// offset; getting it wrong shifts every bank_reg-selected
 	// slave file by +0x20000 and corrupts all graphics.
 	$display("t=%0t  Slave ROM...", $time);
 	ioctl_load_file("../roms_src/pigout/03-29000-01.u3",   HDR_LEN + 27'h100000, 8192);
@@ -3636,7 +3626,7 @@ initial begin
 	ioctl_index    = 16'h00;
 	ioctl_download = 1'b1;
 
-	// ── 16-byte board-ID header (WP-L1, rtl/leland_board_pkg.sv) ────
+	// ── 16-byte board-ID header (rtl/leland_board_pkg.sv) ────
 	// magic 'L', version 1, board_class=GEN3_LELANDI(3), game_id=0,
 	// input_scheme=WHEELS3_PEDALS3(0), flags=0x01 (dual I/O window),
 	// 10 reserved bytes. All following addresses are SDRAM addresses
@@ -3668,7 +3658,7 @@ initial begin
 	// address space, offset by leland_board_pkg::ADDR_SOUND_BASE --
 	// matches sdram_rd3_addr's own base in rtl/leland_board.sv). Same 3
 	// interleaved lo/hi pairs, same base offsets within the 80186's own
-	// space, as mra/SuperOffRoad.mra and sim/leland_sound_tb.sv's own
+	// space, as the MRA and sim/leland_sound_tb.sv's own
 	// load_pair.
 	$display("t=%0t  Sound ROM...", $time);
 	ioctl_load_pair("03-22113-03.u13t", "03-22116-03.u25t", HDR_LEN + 27'h300000 + 27'h040000);
@@ -3694,7 +3684,7 @@ initial begin
 	ioctl_download = 1'b0;
 `endif // PIGOUT_ROMS
 
-	// WP-L2: the old GFX/PROM BRAM real-ioctl-path loading check (which
+	// The old GFX/PROM BRAM real-ioctl-path loading check (which
 	// hierarchically read dut.gfx_rom/dut.prom_rom) no longer applies --
 	// those BRAM arrays are gone; gfx/prom content now lands in SDRAM
 	// through the same wfifo->SDRAM-write pipeline as master/slave/sound
@@ -3776,10 +3766,9 @@ initial begin
 	if (dut.slave_reset_n) $display("=== PASS ===");
 	else                    $display("=== FAIL ===");
 
-	// 2026-07-24: the join_any above completes the instant the boot handshake
+	// The join_any above completes the instant the boot handshake
 	// lands (~158 ms), so on a normal PASS the run heads straight for $finish
-	// and every #REPORT_AT_NS report task is skipped -- which is exactly what
-	// happened on the first Verilator full-board run (PASS + RD0CHK printed,
+	// and every #REPORT_AT_NS report task is skipped (PASS + RD0CHK print
 	// but none of the stall/underrun censuses). For an investigation run that
 	// needs to reach attract mode (SECONDS of sim time, see RUN_LEN_MS at the
 	// top of this file), keep going instead of exiting at the handshake.
@@ -3801,16 +3790,15 @@ initial begin
 	// this the summary would never print on a normal PASS run.
 	$display("=== RD2_DEADLINE_SUMMARY (at $finish) missed=%0d max_wait_cycles=%0d budget_cycles=%0d ===",
 	          rd2_missed_deadlines, rd2_max_wait, RD2_DEADLINE_CYCLES);
-	wpm0_report(); // WP-M0: ACTIVATE/READ ratio per bank
+	wpm0_report(); // ACTIVATE/READ ratio per bank
 	$fclose(board_pcm_fd);
 	stitch_board_wav();
 	$finish;
 end
 
 //------------------------------------------------------------------
-// Sound-board instrumentation (WP10 board-level audio check,
-// docs/WP10_PROGRESS.md "Two ways to get a real audio capture" -- this
-// is option 2): tracks real command traffic from the REAL Master Z80
+// Sound-board instrumentation (board-level audio check):
+// tracks real command traffic from the REAL Master Z80
 // ROM code into the sound board (via its actual 0xF2/0xF4 port writes,
 // leland_master.sv's io_cmd/io_snd_hi decode -- no synthetic bench-driven
 // guessing, unlike sim/leland_sound_tb.sv's own attempt, which never
@@ -3892,47 +3880,23 @@ endtask
 
 // Safety timeout
 initial begin
-	// TEMP: shortened from 2.5s for fast iteration. Now that the
-	// ioctl_addr_d1/write-FIFO alignment bug is fixed, the Master runs
-	// real, MAME-matching code instead of stalling immediately, so this
-	// needs more headroom than the 200ms used to chase that bug -- but
-	// still far short of the full 2.5s/37-minute run. Restore to
-	// 2_500_000_000 for real PASS/FAIL boot-watchdog runs.
-	// 3s total, split to avoid a 32-bit-signed overflow on the literal
-	// (>2.147B ns) -- need enough headroom to reach the repeating
-	// 0x61Fx/0x377x cycle the user reported on real hardware after 20+
-	// real seconds; 800ms only got as far as the raster-sync wait loop
-	// (0x60F4-0x6126).
-	// 2026-07-15 (Follow-up 12): cut back to 0.8s for faster iteration on
-	// the current fg-bitmap/VRAM-content investigation. The 1.15s figure
-	// below was tuned for a DIFFERENT, since-resolved question (whether
-	// the late /MCONT reset pulse at ~869.8ms was a genuine deadlock --
-	// Follow-up 4 killed that hypothesis, confirmed sim-timeout artifact,
-	// not a real hang) and isn't needed for this investigation. Real
-	// hardware's frame rate is 65.95Hz (15.16ms/frame, leland_video.sv
-	// header); MAME's real title/hints art finishes by frame ~36
-	// (~546ms after boot) per Follow-up 9/12's fg_bitmap_early_boot_trace
-	// -- our sim's boot handshake completes at t~83ms, so 83+546=~629ms
-	// is the real "graphics should be loaded" milestone. 0.8s leaves
-	// ~170ms of margin past that. Restore to 1_150_000_000 (or higher)
-	// if the late-reset-pulse scenario needs re-checking.
-	// Follow-up 20: back to 0.8s -- Follow-up 19's 2s run already showed
-	// the E900/E901/0x1136 write pattern repeating identically every
-	// ~30ms starting at t=371ms, so 0.8s captures several repeats without
-	// the extra wait.
+	// Timeout is RUN_END_NS (default ~0.8 s). MAME's title/hints art finishes
+	// by frame ~36 (~546ms after boot; 65.95Hz = 15.16ms/frame). The sim's boot
+	// handshake completes at t~83ms, so ~629ms is the "graphics should be
+	// loaded" milestone and 0.8 s leaves ~170ms of margin past that.
 	#RUN_END_NS;
 	$display("=== TIMEOUT: simulation did not finish in time ===");
 	$display("=== SLAVE_DBG_FINAL s_pc=0x%04x bank_reg=%0x ===",
 	          slave_dbg_pc, dut.slave.bank_reg);
-	// Follow-up 8: cram_we/mcont_r[1] gate evidence summary + a sample of
+	// cram_we/mcont_r[1] gate evidence summary + a sample of
 	// the actual fg-indexed (address>=64) Color RAM content at run's end.
 	$display("=== CRAM_WR_SUMMARY attempts=%0d landed=%0d blocked=%0d fg_landed(idx>=64)=%0d ===",
 	          cram_attempt_count, cram_landed_count, cram_blocked_count, cram_fg_landed_count);
 	$display("=== FG_BITMAP_SUMMARY fg_wr=%0d fg_nonzero=%0d mbx_wr=%0d (MAME reference by frame 36: fg_wr=75035 fg_nonzero=30261, starting frame 0) ===",
 	          fg_wr_count, fg_wr_nonzero, mbx_wr_count);
-// Follow-up 11 -- final-state VRAM content dump + fg-range nonzero
+// Final-state VRAM content dump + fg-range nonzero
 	// count, for direct byte-level comparison against a live MAME
-	// video_ram dump (C:\MiSTerDev\mame\video_ram_dump_*.bin, captured via
+	// video_ram dump (video_ram_dump_*.bin, captured via
 	// the interactive debugger's `save` command at the title/hints
 	// screen -- 47029-47046 nonzero bytes out of 61440 in the same
 	// 0x0000-0xEFFF range, ~76% fill). Writes a raw binary dump of the
@@ -4154,13 +4118,13 @@ reg [63:0] rd0_chk_count, rd0_err_count;
 initial begin
 	rd0_chk_count = 0; rd0_err_count = 0;
 	// The shadow MUST match whichever game's master ROM was actually streamed
-	// into SDRAM. This was offroad-only and unconditional until 2026-07-24,
-	// which made the first pigout run report a spurious
+	// into SDRAM. It was once offroad-only and unconditional,
+	// which made pigout runs report a spurious
 	// `RD0CHK_FINAL checks=352 errors=317` -- SDRAM held pigout's master ROM
 	// while the shadow held offroad's, so ~90% of comparisons mismatched. That
 	// was a testbench gap, NOT a core bug: do not chase it as one.
 `ifdef PIGOUT_ROMS
-	// pigout: 3 x 64 KB (mra/PigOut.mra lines 13-15); 0x30000-0x3FFFF stays
+	// pigout: 3 x 64 KB (Pig Out MRA); 0x30000-0x3FFFF stays
 	// zero, matching the MRA's 0xD0000 tail fill.
 	rd0sf=$fopen("../roms_src/pigout/03-29020-0x.u58t","rb"); rd0src=$fread(rd0_shadow, rd0sf, 32'h00000, 65536); $fclose(rd0sf);
 	rd0sf=$fopen("../roms_src/pigout/03-29021-0x.u59t","rb"); rd0src=$fread(rd0_shadow, rd0sf, 32'h10000, 65536); $fclose(rd0sf);
@@ -4300,14 +4264,14 @@ always @(posedge clk_sys) begin
 	if (!ztrace_closed && dut.master.CE_6M && ~dut.master.m1_n && ~dut.master.mreq_n && ~dut.master.rd_n &&
 	    ~((dut.master.rom_req & dut.master.rom_stall) | dut.master.mvport_stall)) begin
 		$fdisplay(ztrace_fd, "%0t PC=%04x OP=%02x", $time, dut.master.cpu_addr, dut.master.cpu_din);
-		// WP-M8 (2026-07-24): bumped from 150ms -- the repack FSM now also
+		// Bumped from 150ms -- the repack FSM now also
 		// fetches/writes plane2 (see leland_board_pkg.sv's ADDR_GFXROW_BASE),
 		// roughly doubling repack-phase SDRAM transactions and pushing total
 		// boot time (repack + master boot handshake) past this cutoff before
 		// the real PASS milestone (MCONT write releasing slave_reset_n) was
 		// reached -- this is just a debug-trace file-size limit, not a
 		// correctness gate, so widening it is safe.
-		// WP-L3 (2026-07-24): bumped from 300ms -- the new per-game EEPROM
+		// Bumped from 300ms -- the new per-game EEPROM
 		// boot-load FSM (leland_board.sv's ee_st) is sequenced after repack_done
 		// and gates video_release/cpu_release the same way repack_done does,
 		// pushing total pre-boot-handshake time out further again. Same
@@ -4316,12 +4280,8 @@ always @(posedge clk_sys) begin
 		// boot-watchdog (see the `fork...join_any` near this file's end) --
 		// this cutoff must stay comfortably under that 2s budget so it never
 		// preempts a genuine PASS, not right at the old boundary.
-		// 2026-07-24: this used to `$finish`, which silently killed the WHOLE
-		// simulation at 1.8 s -- it terminated the first 30 s pigout attract-mode
-		// run (RUN_LEN_MS=30000) at 1.8 s with no censuses printed, even though
-		// the LONG RUN guard was correctly waiting for t=30 s. This is only a
-		// debug-trace FILE SIZE limit, so it now stops TRACING and lets the run
-		// continue. Safe for the default run too: the default ends at 800 ms,
+		// This is only a debug-trace FILE SIZE limit, so it stops TRACING and
+		// lets the run continue rather than calling `$finish`. Safe for the default run too: the default ends at 800 ms,
 		// below this cutoff, so it never fired there anyway.
 		if ($time > ZTRACE_STOP_NS && !ztrace_closed) begin
 			$fclose(ztrace_fd);

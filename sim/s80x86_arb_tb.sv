@@ -1,10 +1,9 @@
-// Seam-gate bench for G2/G3/G5 (docs/planning_80186_sound.md §5.1):
+// Seam-gate bench for G2/G3/G5:
 // Core.sv -> MemArbiter (combines the CPU's own instr+data ports,
 // exactly MemArbiter's intended use per its "data port has priority
 // over prefetch" comment) -> a SECOND MemArbiter combining that CPU
-// side against a bench-only fake-DMA master (DMA given priority, per
-// plan §1.2 Option A: "DMA gets priority; the CPU simply sees delayed
-// ack") -> the same flat RAM/ROM memory model used in
+// side against a bench-only fake-DMA master (DMA given priority; the
+// CPU simply sees delayed ack) -> the same flat RAM/ROM memory model used in
 // sim/s80x86_stage_a_tb.sv.
 //
 // This is a separate file from s80x86_stage_a_tb.sv (Stage A itself
@@ -62,9 +61,8 @@ Core dut(.clk(clk), .reset(reset), .nmi(nmi), .intr(intr), .irq(irq), .inta(inta
 
 // --- Arbiter 1: combine the CPU's own instr (a, lower priority) and
 // data (b, higher priority) ports into one, per MemArbiter's own
-// intended usage (see rtl/s80x86/MemArbiter.sv's header comment
-// reference in docs/planning_80186_sound.md §1.1: "data port has
-// priority over prefetch: grant_to_b <= b_m_access").
+// intended usage (see rtl/s80x86/MemArbiter.sv: data port has
+// priority over prefetch, grant_to_b <= b_m_access).
 wire [19:1] cpu_q_addr;
 wire [15:0] cpu_q_data_in;
 wire [15:0] cpu_q_data_out;
@@ -399,22 +397,19 @@ initial begin
     end
 end
 
-// --- G5 (no starvation either direction, §5.1) ---
+// --- G5 (no starvation either direction) ---
 // A fixed-period DRQ-style generator (period `G5_DRQ_PERIOD`, default
-// 10 CPU clocks -- the plan's own explicitly-sanctioned aggressive
-// fallback "if WP0 not yet available"; WP0 *did* find a real number
-// (PIT0 divisor 423 @ 4MHz, docs/reference/mame/traces/
-// wp0_offroad_80186_sound_config.md) but that translates to a period
-// nowhere near this aggressive -- using the fallback anyway here
-// because it's a genuinely adversarial stress case, not because the
-// real number was unavailable; see docs/WP1_PROGRESS.md) instead of
+// 10 CPU clocks -- deliberately aggressive; the real observed rate
+// (PIT0 divisor 423 @ 4MHz) translates to a period
+// nowhere near this aggressive -- used here
+// because it's a genuinely adversarial stress case) instead of
 // G2/G3's "re-request after the previous one completes" pattern: if a
 // new DRQ period elapses while the previous request is STILL
 // unserviced, that's an overrun (the exact failure this gate checks
 // for). Models "two channels" worst case as a single fake-DMA master
 // requesting at combined-channel rate rather than building a third
 // arbitration level for an actual second channel -- documented
-// simplification, real per-channel topology is WP8's job.
+// simplification, real per-channel topology is not modeled.
 int g5_drq_period;
 longint unsigned g5_period_counter;
 longint unsigned g5_overrun_count;

@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// Testbench for rtl/leland_ddr_loader.sv
+// Testbench for rtl/mem/leland_ddr_loader.sv
 //  1. DDR load: image staged in a DDR3 model, download ends with no bytes and
 //     ioctl_addr = length (odd length, not a multiple of 8). The replay must
 //     produce exactly the image, in order, with o_addr = byte offset, honouring

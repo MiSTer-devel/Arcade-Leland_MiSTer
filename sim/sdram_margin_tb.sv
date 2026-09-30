@@ -1,14 +1,14 @@
 //============================================================================
 //  sdram_margin_tb.sv — corroborating check for the "TRCD_CYC/TRP_CYC == 1
-//  cycle, zero-margin rounding edge" theory raised while debugging the WP-L2
+//  cycle, zero-margin rounding edge" theory raised while debugging the
 //  rd2 (video) SDRAM tearing bug (see rtl/leland_board.sv's rd2_age_cnt/
-//  rd2_boost history and docs/planning_leland_multiboard.md).
+//  rd2_boost).
 //
 //  sim/sdram_tb.sv (the existing controller testbench) is STALE: it
 //  instantiates a module literally named `sdram` with per-channel
 //  wr/rd0/rd1/rd2 ports -- the OLD internal 4-channel arbitrated design
 //  leland_board.sv's own header comment says was replaced by `sdram_simple`
-//  (single port) + an external arbiter. `rtl/sdram.sv` no longer defines
+//  (single port) + an external arbiter. `rtl/mem/sdram.sv` no longer defines
 //  that `sdram` module at all, so sim/sdram_tb.sv fails at elaboration
 //  (confirmed: vsim-3033 "Instantiation of 'sdram' failed, design unit not
 //  found"). It cannot be used to check current sdram_simple margins without

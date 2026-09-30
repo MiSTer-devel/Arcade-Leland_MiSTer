@@ -1,18 +1,17 @@
-// Stage-C-style directed integration test for WP6 of
-// docs/planning_80186_sound.md ("board glue"): i186_periph (WP2-WP4)
-// wired to the real leland_sound_board (this commit) exactly as the
+// Stage-C-style directed integration test for the board glue: i186_periph
+// wired to the real leland_sound_board exactly as the
 // real 80186 would see it -- CPU-side bus in, external PCS window +
-// I/O-space dac_w decoded, PIT0/PIT1 (KF8253, WP5) driving the polled
+// I/O-space dac_w decoded, PIT0/PIT1 (KF8253) driving the polled
 // DAC-clock status bits. No real s80x86 Core here (that integration is
-// WP10's job, same deferral WP4/WP5 left); this bench is a BFM driving
+// deferred to a later integration bench); this bench is a BFM driving
 // i186_periph's CPU-side port directly, matching the Stage-B precedent
 // in i186_periph_tb.sv/i186_intc_tb.sv.
 //
 // Covers the plan's Stage C acceptance ("polled DAC path... end-to-end"):
-// (a) sequence-accurate: WP0's exact captured programming sequences
+// (a) sequence-accurate: exact captured MAME programming sequences
 //     (relocation-register move to memory mode, PACS/MPCS CSU setup,
 //     PIT0 mode-2/divisor-423 programming) replayed byte-for-byte and
-//     landing at the WP0-observed addresses/values;
+//     landing at the MAME-observed addresses/values;
 // (b) rate-locked: PIT0 counter0's out edge drives clock_active bit2,
 //     and a polled dac_w to channel 2 clears it -- checked directly,
 //     not eyeballed.
@@ -59,8 +58,8 @@ wire [15:0] t_count[0:2], t_maxA[0:2], t_maxB[0:2], t_control[0:2];
 wire        intr; wire [7:0] irq_out; reg inta;
 reg         int0_pin_stub, int1_pin_stub; // periph's own int0/int1 inputs -- unused by
                                             // this bench (board module owns the *board-side*
-                                            // control-register-driven int0/int1 net, WP10
-                                            // wires it to periph's int0_pin/int1_pin later)
+                                            // control-register-driven int0/int1 net,
+                                            // wired to periph's int0_pin/int1_pin later)
 wire        dma0_irq_req_stub = 1'b0, dma1_irq_req_stub = 1'b0;
 wire [7:0]  intc_request_reg, intc_in_service_reg;
 wire [2:0]  intc_status_reg;
@@ -247,17 +246,17 @@ function automatic [19:1] io_port_addr(input [7:0] byte_off);
 endfunction
 
 // Memory-mode internal-register byte offset -> word_addr, given the
-// page this bench programs into RELOC (WP0-observed 0x203 -> base 0x20300).
+// page this bench programs into RELOC (MAME-observed 0x203 -> base 0x20300).
 // NOTE: byte_off is the real 80186 port byte address (e.g. PACS=0xA4,
 // MPCS=0xA8 -- standard 80186 datasheet map), NOT i186_periph.sv's
 // `word_offset` case-label value (which is byte_off>>1, e.g. PACS's
 // case label is 7'h52) -- conflating the two was a real bug caught
-// while bringing this bench up (see docs/WP6_PROGRESS.md).
+// while bringing this bench up.
 function automatic [19:1] mem_internal_addr(input [7:0] byte_off);
     mem_internal_addr = (20'h20300 + {12'h0, byte_off}) >> 1;
 endfunction
 
-// External-window byte offset (0-0x2FF) -> word_addr (base 0x20000, WP0-observed).
+// External-window byte offset (0-0x2FF) -> word_addr (base 0x20000, MAME-observed).
 function automatic [19:1] win_addr(input [11:0] byte_off);
     win_addr = (20'h20000 + {8'h0, byte_off}) >> 1;
 endfunction
@@ -295,7 +294,7 @@ initial begin
     repeat (5) @(posedge clk);
 
     // ============================================================
-    // Part 1: WP0's exact CSU bring-up sequence (Q2, PACS/MPCS table)
+    // Part 1: exact captured CSU bring-up sequence (PACS/MPCS table)
     // ============================================================
     bus_write(io_port_addr(8'hFE), 16'h9203, 2'b11, 1'b1); // RELOC -> mem mode, page 0x203
     check("RELOC readback == 0x9203", reloc_reg == 16'h9203);
@@ -310,9 +309,9 @@ initial begin
     check("ext window base == 0x20000", ext_window_base == 20'h20000);
 
     // ============================================================
-    // Part 2: WP0's exact PIT0 programming sequence (Q9), replayed
+    // Part 2: exact captured PIT0 programming sequence, replayed
     // through the external window at select 2 -- must land on KF8253
-    // without timing out, same replay WP5's own bench already proved
+    // without timing out, same replay kf8253_leland_bus_tb already proved
     // for the wrapper in isolation.
     // ============================================================
     bus_write(win_addr(12'h106), 16'h0034, 2'b01, 1'b0); // control word
@@ -328,7 +327,7 @@ initial begin
     bus_write(win_addr(12'h104), 16'h0000, 2'b01, 1'b0); // counter2 MSB = 0
 
     // Measure counter_0_out's period against the programmed divisor
-    // (0x01A7 = 423), same methodology as WP5's directed test.
+    // (0x01A7 = 423), same methodology as kf8253_leland_bus_tb.
     begin
         integer t0, t1, edges, wd;
         edges = 0; t0 = 0; t1 = 0; wd = 0;
@@ -404,12 +403,8 @@ initial begin
     // Part 5: dac9 word-write-only quirk (R10)
     // ============================================================
     // Test vector's low 10 bits (0x4300 -> 0x300) deliberately avoid
-    // 0x200/10'd512 -- dac9_sample's own reset default as of 2026-07-18
-    // (leland_sound_board.sv: was 10'h000, an offset-binary -512 from
-    // center that produced a real audible DC-step pop on every reset,
-    // fixed to the genuinely neutral 10'd512 -- see
-    // docs/WP10_PROGRESS.md). The original 0x4200/0x200 vector predates
-    // that fix and would now collide with the new reset value, making
+    // 0x200/10'd512 -- dac9_sample's reset default
+    // (leland_sound_board.sv: the neutral 10'd512), which would make
     // this check pass vacuously regardless of whether the byte write
     // was actually ignored.
     bus_write(win_addr(12'h200), 16'h4300, 2'b01, 1'b0); // byte write -- must be IGNORED
@@ -425,13 +420,13 @@ initial begin
     // timer 0 for a short period and confirm the bit sets without
     // waiting on a real dac9 poll loop.
     bus_write(mem_internal_addr(8'h52), 16'h0005, 2'b11, 1'b0); // T0CMPA = 5
-    // T0CON: EN, continuous, no ALT -- WP0's captured 0x8021 is a
+    // T0CON: EN, continuous, no ALT -- the captured 0x8021 is a
     // *readback* value (INH/bit14 always reads 0, i186_periph.sv's
     // mask_control()); the write that actually latches EN must set
     // INH(bit14) itself in the same write, or EN is silently ignored
     // and the old (post-reset 0) value is kept -- a real 80186 quirk,
     // not a bug in this bench's first draft (caught here) nor in the
-    // DUT (see docs/WP6_PROGRESS.md).
+    // DUT.
     bus_write(mem_internal_addr(8'h56), 16'hC021, 2'b11, 1'b0);
     begin
         integer wd2;

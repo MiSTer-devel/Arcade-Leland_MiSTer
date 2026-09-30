@@ -1,9 +1,9 @@
-// leland_sound_tb -- standalone integration test for rtl/leland_sound.sv
-// (WP10's MiSTer-integration wrapper: real Core + first-level instr/
-// data arbiter + i186_periph (incl. WP8 DMA) + leland_sound_board +
+// leland_sound_tb -- standalone integration test for rtl/audio/leland_sound.sv
+// (MiSTer-integration wrapper: real Core + first-level instr/
+// data arbiter + i186_periph (incl. DMA) + leland_sound_board +
 // leland_dac_mixer + on-chip RAM + a byte-wide SDRAM-style ROM
-// adapter). This is the first bench to exercise the parts WP1-WP9's
-// own benches never needed: the instr/data arbiter (every prior bench
+// adapter). This is the first bench to exercise the parts the earlier
+// unit benches never needed: the instr/data arbiter (every prior bench
 // fed instr_m straight to a flat memory model) and the RAM/ROM address
 // decode + multi-cycle byte-wide ROM read FSM (every prior bench used
 // a flat, single-cycle-ack memory model for everything downstream of
@@ -31,7 +31,7 @@
 module leland_sound_tb;
 
 // 48MHz -- the REAL clk_sys rate this design is built around (matches
-// leland_board_tb.sv's own convention), unlike every prior WP1-WP9 bench's
+// leland_board_tb.sv's own convention), unlike every earlier unit bench's
 // deliberately uncalibrated "functional only" sim clock: this bench's
 // whole point is a real-time-accurate audio capture, so cycle counts
 // here really do mean real seconds (240,000,000 cycles = 5 real
@@ -145,7 +145,7 @@ assign rom_stall = rom_req && (rom_wait_ctr != 2'd0);
 assign rom_data  = rom_img[rom_addr];
 
 // Microcode ROM load workaround -- same ModelSim quirk documented in
-// docs/WP1_PROGRESS.md (Microcode.sv's own $readmemb unreliable under
+// s80x86_stage_a_tb.sv (Microcode.sv's own $readmemb unreliable under
 // this tool); re-load directly via hierarchical reference.
 initial $readmemb("../rtl/s80x86/microcode/microcode.bin", dut.cpu.Microcode.mem);
 
@@ -164,10 +164,9 @@ initial begin
     sound_ctrl_wr = 1'b0;
 end
 
-// --- Synthetic command-injection sequence (docs/WP10_PROGRESS.md:
-// "root-caused: the 1s audio capture contains no audio" -- root cause
-// was this bench never driving cmd_wr_lo/cmd_wr_hi at all after boot,
-// so the 80186 had nothing to do once its own boot self-test finished).
+// --- Synthetic command-injection sequence (without driving
+// cmd_wr_lo/cmd_wr_hi after boot, the 80186 has nothing to do once its
+// own boot self-test finishes).
 // Real hardware's master Z80 continuously writes music/SFX command
 // bytes to ports 0xF2 (command_lo_w)/0xF4 (command_hi_w) throughout
 // gameplay/attract mode -- this bench can't replicate the REAL Leland
@@ -175,7 +174,7 @@ end
 // disassembled, out of scope here), so it drives a
 // synthetic-but-plausible sequence instead: the one real byte value
 // actually observed in
-// docs/reference/mame/traces/mastertrace.log (0xFF/0xFF, the very
+// a MAME master-CPU trace (0xFF/0xFF, the very
 // first command the real master Z80 sends, at PC $1246/$1248) as the
 // first command, then a swept sequence of synthetic command bytes to
 // exercise whatever command-dispatch code path this reaches, so the
@@ -208,7 +207,7 @@ task automatic send_command(input [7:0] lo, input [7:0] hi);
         // to edge-triggered (LTM=0 reset default, see
         // intc_ext0_ctrl<=7'hf in i186_periph.sv), so this needs a real
         // 0->1 transition on int0_pin, not just holding it high --
-        // matches WP0's own capture of a real REQST 0x0000->0x0020
+        // matches a captured real REQST 0x0000->0x0020
         // transition, not a held level. Reuses the same
         // sound_ctrl_data/sound_ctrl_wr port this bench's boot sequence
         // already drives for /RESET (bit7 stays 1 = deasserted in both
@@ -238,9 +237,8 @@ localparam integer NUM_SYNTHETIC_COMMANDS = 200;
 task automatic send_command_sequence;
     integer cmd_idx;
     begin
-        // Let the 80186 finish its own boot self-test (WP0's captured
-        // boot signature settles well within 300k cycles per this
-        // bench's own earlier runs) before the first command arrives --
+        // Let the 80186 finish its own boot self-test (the boot
+        // signature settles well within 300k cycles) before the first command arrives --
         // matches real hardware, where the master Z80 never sends a
         // command before the sound CPU has come out of its own boot.
         repeat (COMMAND_PERIOD_CLKS) @(posedge clk_sys);
@@ -365,7 +363,7 @@ initial begin
     $finish;
 end
 
-// WP9 backstop, same as prior benches -- since this is the first bench
+// WAIT backstop, same as prior benches -- since this is the first bench
 // exercising the REAL reset/control-latch path (not a directly-forced
 // Core.reset), worth re-checking here too.
 longint unsigned wait_dispatch_count = 0;

@@ -1,4 +1,4 @@
-import re, sys
+import os, re, sys
 
 def load_dump(path):
     """Parse a MAME `dasm` output file into {addr: [opcode bytes]}."""
@@ -88,7 +88,7 @@ def collapse_loops(seq, min_run=3):
     return out
 
 if __name__ == '__main__':
-    base = 'C:/MiSTerDev/SuperOffRoad_MiSTer'
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     dump = load_dump(f'{base}/docs/reference/mame/traces/masterdump.asm')
     sim = collapse_sim_trace(f'{base}/sim/master_pc_trace.log')
 

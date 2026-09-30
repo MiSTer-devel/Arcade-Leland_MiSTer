@@ -1,3 +1,6 @@
+// Sound board standalone (80186 + KF8253 + DAC mixer). From sim/:
+//   vlib work && vlog -mfcu -sv -suppress 2244 +incdir+../rtl/KF8253 +incdir+../rtl/s80x86 +incdir+../rtl/s80x86/microcode -f flist_sound_full.txt
+//   vsim -c work.leland_sound_tb -do "run -all; quit"
 ../rtl/s80x86/config.v
 ../rtl/s80x86/microcode/MicrocodeTypes.sv
 ../rtl/s80x86/FlagsEnum.sv
@@ -56,8 +59,8 @@
 ../rtl/KF8253/KF8253_Control_Logic.sv
 ../rtl/KF8253/KF8253.sv
 ../rtl/KF8253/kf8253_leland_bus.sv
-../rtl/i186_periph.sv
-../rtl/leland_sound_board.sv
-../rtl/leland_dac_mixer.sv
-../rtl/leland_sound.sv
+../rtl/cpu/i186_periph.sv
+../rtl/audio/leland_sound_board.sv
+../rtl/audio/leland_dac_mixer.sv
+../rtl/audio/leland_sound.sv
 leland_sound_tb.sv

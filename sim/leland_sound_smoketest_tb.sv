@@ -1,27 +1,27 @@
-// leland_sound_smoketest_tb -- real s80x86 Core (WP1) + real ROM,
-// wired through the real i186_periph (WP2-4) -> leland_sound_board
-// (WP6) -> leland_dac_mixer (WP7) chain, to answer a narrower question
-// than full WP10 integration: "does actual SOR sound-ROM code, running
+// leland_sound_smoketest_tb -- real s80x86 Core + real ROM,
+// wired through the real i186_periph -> leland_sound_board
+// -> leland_dac_mixer chain, to answer a narrower question
+// than full integration: "does actual SOR sound-ROM code, running
 // on the real CPU core, reach the point of driving the polled/timer-
 // paced DAC path and produce real audio samples" -- without waiting for
-// WP8 (internal DMA) or WP9/WP10 (board-level reset sequencing, master
-// Z80 harness, Quartus integration).
+// internal DMA or board-level reset sequencing, master
+// Z80 harness, Quartus integration.
 //
 // Explicitly NOT a claim of PC-trace-accurate MAME matching (that's
 // s80x86_stage_a_tb.sv's job, already proven for the first 30
-// instructions -- see docs/WP1_PROGRESS.md) and NOT a claim that DMA
-// channels 0/1 produce audio (WP8 doesn't exist yet -- their PIT
+// instructions) and NOT a claim that DMA
+// channels 0/1 produce audio (DMA is not serviced here -- their PIT
 // DRQ0/DRQ1 pulses just go unserviced here, so those two channels stay
 // silent by construction, not by bug). Channels 2-5 (polled) and dac9
 // (timer-0-paced, direct CPU store) need no DMA at all and are exactly
-// what WP0's real MAME trace showed getting programmed within the
+// what a real MAME trace showed getting programmed within the
 // first ~16 emulated video frames of boot -- i.e. very early, well
 // within a bounded instruction-count run.
 //
 // Memory model, ROM/microcode loading, and the "run <N>ns not run <N>"
 // / Microcode.sv readmemb workarounds are copied verbatim from
-// s80x86_stage_a_tb.sv (WP1) -- see that file's own header/
-// docs/WP1_PROGRESS.md for why they're needed. This bench adds: the
+// s80x86_stage_a_tb.sv -- see that file's own header
+// for why they're needed. This bench adds: the
 // DATA port routes through i186_periph -> leland_sound_board instead
 // of a flat memory model with dummy I/O reads; a real ROM/RAM array
 // still backs leland_sound_board's `mem_*` passthrough port for
@@ -102,7 +102,7 @@ Core dut(.clk(clk),
          .debug_wr_val(debug_wr_val),
          .debug_wr_en(debug_wr_en));
 
-// --- i186_periph (WP2-4) ---
+// --- i186_periph ---
 wire [19:1] sys_addr;
 wire [15:0] sys_data_in;
 wire [15:0] sys_data_out;
@@ -124,12 +124,12 @@ wire [3:0]  intc_timer0_ctrl_reg, intc_dma0_ctrl_reg, intc_dma1_ctrl_reg;
 wire [6:0]  intc_ext0_ctrl_reg, intc_ext1_ctrl_reg;
 
 // No master-Z80 harness -- INT0/INT1 and DMA-TC never assert. The ROM
-// runs in poll mode for its own status checks (WP0's own finding) so
+// runs in poll mode for its own status checks so
 // this doesn't block the polled/timer-paced DAC path from working.
 wire int0_pin = 1'b0, int1_pin = 1'b0;
 wire dma0_irq_req = 1'b0, dma1_irq_req = 1'b0;
 
-// WP8: DMA readback (unused by this bench's own pass/fail criteria --
+// DMA readback (unused by this bench's own pass/fail criteria --
 // this smoke test only checks "does it hang" / DAC-write snapshots, per
 // its own header -- but wired up so the internal DMA engine is actually
 // live and driving real channel-0/1 traffic if the real ROM programs it).
@@ -169,7 +169,7 @@ i186_periph periph(
     .dma_src(dma_src), .dma_dst(dma_dst), .dma_count(dma_count), .dma_control(dma_control),
     .dma_active(dma_active), .dma_byte_done(dma_byte_done), .dma_byte_done_ch(dma_byte_done_ch));
 
-// --- leland_sound_board (WP6) ---
+// --- leland_sound_board ---
 wire [19:1] mem_addr;
 reg  [15:0] mem_data_in;
 wire [15:0] mem_data_out;
@@ -231,7 +231,7 @@ always @(posedge clk or posedge reset) begin
     end
 end
 
-// --- leland_dac_mixer (WP7) ---
+// --- leland_dac_mixer ---
 wire signed [15:0] audio_out;
 leland_dac_mixer mixer(
     .clk(clk), .reset(reset),
@@ -321,8 +321,8 @@ longint unsigned MAX_INSTR;
 longint unsigned dac_write_count = 0, dac9_write_count = 0;
 longint unsigned dma_byte_count = 0;
 
-// WP9: WAIT (0x9B) never-dispatched backstop -- same rationale/method
-// as s80x86_stage_a_tb.sv's own monitor (docs/WP9_PROGRESS.md), run
+// WAIT (0x9B) never-dispatched backstop -- same rationale/method
+// as s80x86_stage_a_tb.sv's own monitor, run
 // here too since this bench drives real ROM code far past Stage A's
 // own instruction count.
 longint unsigned wait_dispatch_count = 0;

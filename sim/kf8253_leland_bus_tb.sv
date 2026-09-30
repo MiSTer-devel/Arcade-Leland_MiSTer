@@ -1,15 +1,14 @@
-// Directed test for kf8253_leland_bus (WP5, docs/WP5_PROGRESS.md).
-// Replays WP0's exact observed PIT0 programming sequence
-// (docs/reference/mame/traces/wp0_offroad_80186_sound_config.md,
-// "PIT8254 programming (Q9)") through the wrapper's generic bus and
+// Directed test for kf8253_leland_bus
+// Replays the exact MAME-observed PIT0 programming sequence
+// through the wrapper's generic bus and
 // confirms: (a) KF8253's own upstream testbench already passes
-// unmodified in this repo's sim flow (verified separately, see
-// docs/WP5_PROGRESS.md -- not re-duplicated here); (b) the wrapper's
+// unmodified in this repo's sim flow (verified separately, not
+// re-duplicated here); (b) the wrapper's
 // access/ack/bytesel translation correctly reaches the chip; (c) the
-// resulting OUT0 waveform's period matches WP0's real observed rate
+// resulting OUT0 waveform's period matches the real observed rate
 // (PIT_clk=4MHz / divisor=0x01A7=423 ~= 9457 Hz) to a tight tolerance
-// -- this is the actual acceptance bar from the plan's WP5 row
-// ("OUT waveforms match MAME PIT event log within one PIT clock").
+// -- the acceptance bar is that OUT waveforms match the MAME PIT
+// event log within one PIT clock.
 
 `timescale 1ns / 1ps
 
@@ -97,9 +96,8 @@ initial begin
     reset = 0;
     @(posedge clk);
 
-    // --- WP0's exact observed PIT0 programming sequence (real MAME
-    // trace, see docs/reference/mame/traces/
-    // wp0_offroad_80186_sound_config.md "PIT8254 programming (Q9)"):
+    // --- Exact observed PIT0 programming sequence (real MAME
+    // trace):
     //   addr=20106 data=0034  -- control: SC=00(counter0) RW=11(LSB/MSB)
     //                             MODE=010(rate gen) BCD=0
     //   addr=20100 data=00a7  -- counter0 LSB
@@ -115,7 +113,7 @@ initial begin
           1'b1); // bus_write's own timeout would have left ack low if
                  // this hung -- reaching here at all is the real check
 
-    // --- Measure OUT0's period directly and compare against WP0's
+    // --- Measure OUT0's period directly and compare against the
     // real observed rate: divisor 423 @ 4MHz => period = 423/4MHz =
     // 105.75us. Mode 2 (rate generator) pulses OUT low for exactly one
     // input-clock period once per `divisor` clocks, so consecutive

@@ -93,7 +93,7 @@ sound board and the full board. See `sim/README.md`.
 - [jamieiles/80x86](rtl/s80x86/README_VENDORING.md): 8086/80186 core for the
   sound CPU (GPLv3), vendored.
 - [KF8253](rtl/KF8253/README_UPSTREAM.md): 8253 PIT core.
-- `rtl/sdram.sv`, `rtl/sdram_banked.sv`: SDRAM controllers (MIT, Kevin Coleman).
+- `rtl/mem/sdram.sv`, `rtl/mem/sdram_banked.sv`: SDRAM controllers (MIT, Kevin Coleman).
 - The [MiSTer framework](https://github.com/MiSTer-devel) in `sys/`.
 
 ## License

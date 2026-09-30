@@ -3,7 +3,7 @@
 //
 // Multi-bank open-row SDR SDRAM controller.
 //
-// Derived from sdram_simple (rtl/sdram.sv) by adding:
+// Derived from sdram_simple (rtl/mem/sdram.sv) by adding:
 //   - an explicit bank_sel input: each caller pins its traffic to one bank
 //   - per-bank open-row state: one active row kept per bank
 //   - a page-hit path that skips ACTIVATE when the same row is open
@@ -560,7 +560,7 @@ module sdram_banked #(
 					if (rq_write_word) begin
 						// Full word write — DQM=00, no per-byte masking.
 						// Preserved verbatim from sdram_simple (DQM has no effect
-						// on this board's hardware per the proven rtl/sdram.sv comment).
+						// on this board's hardware per the proven rtl/mem/sdram.sv comment).
 						sd_dq_out_nxt = {rq_din_hi, rq_din};
 						sd_dqm_nxt    = 2'b00;
 					end else begin

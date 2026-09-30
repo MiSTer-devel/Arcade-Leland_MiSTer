@@ -1,7 +1,6 @@
 //============================================================================
-//  sdram_burst_tb.sv — WP-M6 unit-sim gate for sdram_banked.sv's new
-//  BURST_LEN capability (docs/planning_sdram_multichannel.md §11, plan file
-//  "WP-M6: Burst-read support in sdram_banked.sv").
+//  sdram_burst_tb.sv — unit-sim gate for sdram_banked.sv's
+//  BURST_LEN capability.
 //
 //  Modeled on sim/sdram_margin_tb.sv's pattern: drive the real controller
 //  against Micron's official mt48lc16m16a2 behavioral model and watch its
@@ -10,7 +9,7 @@
 //  run below, same as sdram_margin_tb's own documented method.
 //
 //  Compile-time BURST_LEN override (default 1 -- the regression scenario):
-//    vlog ... +define+BURST_LEN=4   sim/sdram_burst_tb.sv rtl/sdram_banked.sv ...
+//    vlog ... +define+BURST_LEN=4   sim/sdram_burst_tb.sv rtl/mem/sdram_banked.sv ...
 //
 //  Scenarios run every time, in order:
 //   1. REGRESSION (always, any BURST_LEN): the same worst-case
@@ -116,8 +115,8 @@ end
 // neither obvious from the black-box ports alone:
 //
 // 1. sdram_banked's `ready` reasserts ONE CYCLE BEFORE `req_done` for reads
-//    (deliberate -- the WP-M5 read-race fix delays req_done by one extra
-//    cycle past state returning to S_IDLE; see rtl/sdram_banked.sv's
+//    (deliberate -- the read-race fix delays req_done by one extra
+//    cycle past state returning to S_IDLE; see rtl/mem/sdram_banked.sv's
 //    read_done_d comment). Holding rd high all the way through req_done
 //    (the naive approach, and what sim/sdram_margin_tb.sv does against
 //    sdram_simple) risks a stale-address phantom second request being
@@ -125,7 +124,7 @@ end
 // 2. `ready` can also go high->low on a cycle that ISN'T our request being
 //    accepted at all -- AUTO_REFRESH's PRECHARGE-ALL preempts the S_IDLE
 //    decision whenever refresh_pending is set, taking priority over
-//    rd/we/we_word (see the S_IDLE case in rtl/sdram_banked.sv). A task
+//    rd/we/we_word (see the S_IDLE case in rtl/mem/sdram_banked.sv). A task
 //    that just waits exactly one clk edge after seeing `ready` and then
 //    drops rd (assuming that edge accepted the request) drops rd BEFORE
 //    the request was ever actually serviced whenever refresh wins that
@@ -186,7 +185,7 @@ initial begin
 	// bank/different-row read+write pattern, same shape as
 	// sdram_margin_tb.sv's, re-targeted at bank_sel instead of
 	// addr-encoded bank bits. At BURST_LEN=1 this must produce zero
-	// chip-model timing-violation output, identical to the pre-WP-M6
+	// chip-model timing-violation output, identical to the non-burst
 	// baseline.
 	//--------------------------------------------------------------
 	// Reads must stay BURST_LEN-aligned at this instance's configured
@@ -234,7 +233,7 @@ initial begin
 		// quirk this TB's simplified task pattern doesn't fully account
 		// for -- the real client, rtl/leland_board.sv, never issues a read
 		// this tightly coupled to a write of the same address in practice),
-		// not a WP-M6/burst-specific defect. Words [1..BURST_LEN-1] are
+		// not a burst-specific defect. Words [1..BURST_LEN-1] are
 		// still compared exactly, which is sufficient to catch any real
 		// burst-ordering/indexing bug (e.g. the burst_cnt-vs-capture
 		// off-by-one this TB's own do_read/do_write tasks were found to

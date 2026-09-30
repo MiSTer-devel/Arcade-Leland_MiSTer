@@ -6,7 +6,7 @@
 //
 //  Connects the master and slave Z80, the video system, the SDRAM controller (program,
 //  sound and tile ROMs), block RAM (VRAM 128 KB, work RAM, colour RAM, EEPROM) and the
-//  80186 sound board (rtl/leland_sound.sv).
+//  80186 sound board (rtl/audio/leland_sound.sv).
 //
 //  SDRAM layout (byte addresses after the 16-byte header; see leland_board_pkg.sv):
 //    0x000000 master Z80 ROM    0x100000 slave Z80 ROM    0x300000 80186 sound ROM
@@ -16,7 +16,7 @@
 import leland_board_pkg::*;
 
 module leland_board #(
-	// Passed to the internal sdram controller (see rtl/sdram.sv): 1 is required on
+	// Passed to the internal sdram controller (see rtl/mem/sdram.sv): 1 is required on
 	// hardware; simulation overrides it to 0 to avoid Altera's simulation libraries.
 	parameter bit USE_ALTDDIO = 1'b1,
 
@@ -1078,7 +1078,7 @@ wire        master_rom_req;          // from leland_master
 wire [17:0] master_rom_addr_w;       // from leland_master (flat 256 KB offset)
 reg  [7:0]  master_rom_data_r;       // latched SDRAM byte
 
-// Line cache for the master code fetch (rd0); see rtl/rom_line_cache.sv.
+// Line cache for the master code fetch (rd0); see rtl/mem/rom_line_cache.sv.
 wire master_rom_stall;
 // 2 KB direct-mapped over 256 KB missed 5-6% of fetches in gameplay, and each miss
 // stalls the CPU ~12 CE_6M ticks, so the cache uses 2048 lines (16 KB), which cuts
@@ -1326,7 +1326,7 @@ leland_slave slave
 
 //------------------------------------------------------------------
 // Sound board: s80x86 core + i186_periph + leland_sound_board +
-// leland_dac_mixer, bundled in rtl/leland_sound.sv.
+// leland_dac_mixer, bundled in rtl/audio/leland_sound.sv.
 //------------------------------------------------------------------
 wire        sound_rom_req;
 wire [19:0] sound_rom_addr_w;

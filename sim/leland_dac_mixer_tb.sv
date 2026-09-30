@@ -1,5 +1,4 @@
-// WP7 testbench for rtl/leland_dac_mixer.sv (docs/planning_80186_sound.md
-// WP7). Two parts:
+// Testbench for rtl/audio/leland_dac_mixer.sv. Two parts:
 //
 //  Part A -- directed digital checks against a reference model
 //  (`model_mix`, a line-by-line mirror of the RTL's fixed-point math)
@@ -9,8 +8,8 @@
 //  of the gain math itself (that derivation lives in leland_dac_mixer.sv's
 //  own header comment).
 //
-//  Part B -- "synthetic full-scale test tones per channel" (WP7's own
-//  stated acceptance criterion, alongside the plan's Stage C WAV
+//  Part B -- "synthetic full-scale test tones per channel" (the
+//  acceptance criterion, alongside the Stage C WAV
 //  criterion): drives each of the 6 8-bit channels and dac9 in turn
 //  with a full-scale square wave at a distinct audible frequency and
 //  records the mixer's real output into a real 16-bit PCM mono WAV

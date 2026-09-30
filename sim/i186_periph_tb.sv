@@ -1,5 +1,4 @@
-// Stage-B-style directed unit test for i186_periph (WP2, see
-// docs/WP2_PROGRESS.md and docs/planning_80186_sound.md §4.3 Stage B).
+// Stage-B-style directed unit test for i186_periph.
 // Drives i186_periph's CPU-side bus directly via a small BFM (bus
 // functional model) rather than routing through real x86 code -- this
 // module is a pure bus responder, and directed register-level tests are
@@ -176,7 +175,7 @@ initial begin
           rd == (16'hFFA0 ^ 16'hBEEF));
 
     // --- Switch to memory mode: write RELOC (port 0xFFFE -> word_addr
-    // 0xFFFE>>1 = 0x7FFF) to WP0's observed real value 0x9203.
+    // 0xFFFE>>1 = 0x7FFF) to the MAME-observed value 0x9203.
     bus_write(19'h7FFF, 16'h9203, 2'b11, 1'b1);
     check("RELOC write in I/O mode succeeds", reloc_reg == 16'h9203);
 
@@ -205,7 +204,7 @@ initial begin
     check("memory-mode MPCS write (WP0 observed value)",
           mpcs_reg == (16'hC0FC | 16'h8038));
 
-    // --- WP0's central finding: external PCS window ends up at
+    // --- Central finding: external PCS window ends up at
     // physical 0x20000, memory-mapped (MPCS bit6=1).
     check("ext_window_base == 0x20000 (WP0 observed)", ext_window_base == 20'h20000);
     check("ext_window_is_mem == 1 (WP0 observed, MPCS bit6)", ext_window_is_mem == 1'b1);

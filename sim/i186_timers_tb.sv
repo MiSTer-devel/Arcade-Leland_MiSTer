@@ -1,7 +1,6 @@
-// Stage-B-style directed unit test for i186_periph's WP3 timer block
-// (docs/WP3_PROGRESS.md, docs/planning_80186_sound.md §4.3 Stage B /
-// WP3 row). Drives the CPU-side bus directly via the same BFM pattern
-// as sim/i186_periph_tb.sv (WP2) -- register-level directed tests, no
+// Stage-B-style directed unit test for i186_periph's timer block.
+// Drives the CPU-side bus directly via the same BFM pattern
+// as sim/i186_periph_tb.sv -- register-level directed tests, no
 // real x86 code needed since this module is a pure bus responder plus
 // a free-running counter datapath.
 //

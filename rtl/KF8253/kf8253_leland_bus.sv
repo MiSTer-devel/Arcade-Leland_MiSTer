@@ -1,17 +1,14 @@
 // kf8253_leland_bus -- bus-decode wrapper adapting this repo's generic
 // access/ack/wr_en/bytesel bus convention (the same one i186_periph.sv
 // uses on its sys-side port) onto vendored KF8253's native
-// chip_select_n/read_enable_n/write_enable_n/address[1:0] strobe bus
-// (WP5 of docs/planning_80186_sound.md).
+// chip_select_n/read_enable_n/write_enable_n/address[1:0] strobe bus.
 //
-// Scope boundary (per the plan's WP5/WP6 split): this module does NOT
-// decode a real system address into "is this access for me" -- that's
-// WP6's PCS-window job (leland_a.cpp's peripheral_r/w, `select = offset
-// >> 6`, PCS2/PCS3 sub-windows). This module assumes it has already
+// Scope boundary: this module does NOT decode a real system address into
+// "is this access for me" -- that is the PCS-window job (MAME's leland_a.cpp
+// peripheral_r/w, `select = offset >> 6`, PCS2/PCS3 sub-windows). This module assumes it has already
 // been selected (`access` asserted) and only needs `local_addr[1:0]`
 // (the KF8253 register select: 00/01/10 = counter 0/1/2, 11 = control
-// -- confirmed against WP0's real observed programming, see
-// docs/WP5_PROGRESS.md) to talk to the chip correctly.
+// -- as the game's sound code programs it) to talk to the chip correctly.
 //
 // Why a 2-cycle FSM, not a 1-cycle passthrough: KF8253_Control_Logic's
 // write commit is edge-triggered on write_enable_n's 0->1 transition
@@ -34,8 +31,8 @@ module kf8253_leland_bus(
     input  logic         wr_en,
     input  logic [1:0]  bytesel,   // 01=low-byte lane, 10=high-byte
                                     // lane, 11=word (low byte used --
-                                    // WP0's observed writes were all
-                                    // low-byte-lane; see WP5_PROGRESS.md)
+                                    // the game's writes are all
+                                    // low-byte-lane)
 
     // PIT chip I/O
     input  logic counter_0_clock, counter_0_gate, output logic counter_0_out,
@@ -61,9 +58,7 @@ KF8253 u_kf8253(
 // hasn't yet reacted to `ack` (still holding access high the cycle
 // after) would fall straight back into S_IDLE and get re-triggered as
 // a brand-new transaction. Same access/ack race class documented and
-// fixed in rtl/i186_periph.sv's WP3 commit (docs/WP3_PROGRESS.md,
-// "real bugs found" #3) -- caught here by inspection before it needed
-// a debug session to find, since it's structurally identical.
+// fixed in rtl/cpu/i186_periph.sv; the same structure is handled here.
 typedef enum logic [2:0] {S_IDLE, S_WR0, S_WR1, S_RD0, S_WAIT} state_t;
 state_t state;
 
