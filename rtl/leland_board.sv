@@ -158,6 +158,8 @@ wire [24:0] sdram_rd2_addr_v;
 reg         sdram_rd2_ack;
 reg   [7:0] sdram_rd2_data;
 reg  [15:0] sdram_rd2_data16;    // burst word 0, see leland_video.sv
+reg  [15:0] sdram_rd2_data16_w2;   // burst word 2 (Ataxx)
+reg  [15:0] sdram_rd2_data16_w3;   // burst word 3 (Ataxx repack)
 reg  [15:0] sdram_rd2_data16_hi; // burst word 1
 wire        rd2_fetch_busy; // whole-tile-burst-in-progress, see leland_video.sv's fetch_busy comment
 wire  [3:0] rd2_rbuf_count; // ring-buffer occupancy, see leland_video.sv's rbuf_count_out comment
@@ -354,7 +356,7 @@ always @(posedge clk_sys) begin
 			done_seen <= 1'b1;
 			case (issued_ch)
 				CH_WR:  sdram_wr_ack  <= 1'b1;
-	CH_RD2: begin sdram_rd2_data <= sd_dout_b0; sdram_rd2_data16 <= sd_burst_words[0]; sdram_rd2_data16_hi <= sd_burst_words[1]; sdram_rd2_ack <= 1'b1; end
+	CH_RD2: begin sdram_rd2_data <= sd_dout_b0; sdram_rd2_data16 <= sd_burst_words[0]; sdram_rd2_data16_hi <= sd_burst_words[1]; sdram_rd2_data16_w2 <= sd_burst_words[2]; sdram_rd2_data16_w3 <= sd_burst_words[3]; sdram_rd2_ack <= 1'b1; end
 				CH_RD0: begin sdram_rd0_data <= sd_dout_b0; sdram_rd0_ack <= 1'b1; end
 				CH_RD1: begin sdram_rd1_data <= sd_dout_b0; sdram_rd1_ack <= 1'b1; end
 				CH_RD3: begin sdram_rd3_data <= sd_dout_b0; sdram_rd3_ack <= 1'b1; end
@@ -372,13 +374,13 @@ end
 
 // sdram_banked: open-row multi-bank controller. bank_sel pins each client to its own
 // physical bank so interleaving between clients does not thrash open rows. CAS_LAT=3
-// is the proven value for this design. BURST_LEN=2 is shared by every channel (single-
+// is the proven value for this design. BURST_LEN=4 is shared by every channel (single-
 // word clients read sd_dout_b0 / sd_burst_words[0], which is correct for any burst
 // length); only rd2's GFXROW fetch uses the second word.
 sdram_banked #(
 	.CLK_MHZ(48),
 	.CAS_LAT(3),
-	.BURST_LEN(2)
+	.BURST_LEN(4)
 ) sdram_ctrl
 (
 	.sd_cke   (sd_cke),
@@ -668,7 +670,7 @@ repack_state_e repack_st;
 reg [16:0] repack_idx;
 reg  [7:0] repack_b0;
 reg  [7:0] repack_b2; // plane2 byte, latched at RP_RD2_WAIT for the GFXROW word1 write
-reg        repack_done;
+reg        repack_done_g;
 
 reg        repack_rd_req_r;
 reg [24:0] repack_rd_addr_r;
@@ -682,17 +684,14 @@ always @(posedge clk_sys) begin
 	if (sdram_init) begin
 		repack_st       <= RP_IDLE;
 		repack_idx      <= 17'd0;
-		repack_done     <= 1'b0;
+		repack_done_g     <= 1'b0;
 		repack_rd_req_r <= 1'b0;
 		repack_wr_req_r <= 1'b0;
 	end else begin
 		case (repack_st)
 			RP_IDLE: if (dl_settled && !wr_pending) begin
-				if (ataxx_sel) begin
-					repack_st   <= RP_DONE;
-					repack_done <= 1'b1;
-				end else
-					repack_st <= RP_RD0_REQ;
+				if (ataxx_sel) repack_st <= RP_DONE;
+				else           repack_st <= RP_RD0_REQ;
 			end
 
 			// plane0[idx] -- ADDR_GFX_BASE + idx (u93, the first 32KB third)
@@ -769,7 +768,7 @@ always @(posedge clk_sys) begin
 				repack_wr_req_r <= 1'b0;
 				if (repack_idx == REPACK_LEN - 17'd1) begin
 					repack_st   <= RP_DONE;
-					repack_done <= 1'b1;
+					repack_done_g <= 1'b1;
 				end else begin
 					repack_idx  <= repack_idx + 17'd1;
 					repack_st   <= RP_RD0_REQ;
@@ -780,6 +779,119 @@ always @(posedge clk_sys) begin
 		endcase
 	end
 end
+
+//------------------------------------------------------------------
+// Ataxx gfx repack: packs the six plane files (raw at ADDR_GFX_BASE + n*0x20000) into
+// 8-byte tile rows at ADDR_GFXAX_BASE (plane0..plane5, then 2 pad bytes), so
+// leland_video fetches a whole row with one 4-word burst. Per tile: six burst reads
+// (one plane each, byte r = row r), then three word writes per row (the pad word is
+// left unwritten). It borrows rd2 and the write channel like the gen 1-3 repack above,
+// which is skipped for this board.
+//------------------------------------------------------------------
+typedef enum logic [2:0] {
+	RX_IDLE, RX_RD_REQ, RX_RD_WAIT, RX_WR_REQ, RX_WR_WAIT, RX_DONE
+} rx_state_e;
+
+rx_state_e rx_st;
+reg [13:0] rx_tile;
+reg  [2:0] rx_plane;
+reg  [2:0] rx_row;
+reg  [1:0] rx_w;
+reg [63:0] rx_buf0, rx_buf1, rx_buf2, rx_buf3, rx_buf4, rx_buf5;
+reg        rx_done;
+reg        rx_rd_req_r;
+reg [24:0] rx_rd_addr_r;
+reg        rx_wr_req_r;
+reg [24:0] rx_wr_addr_r;
+reg  [7:0] rx_wr_lo, rx_wr_hi;
+
+wire rx_active = (rx_st != RX_IDLE) && (rx_st != RX_DONE);
+
+reg [63:0] rx_sel_lo, rx_sel_hi;
+always @(*) begin
+	case (rx_w)
+		2'd0:    begin rx_sel_lo = rx_buf0; rx_sel_hi = rx_buf1; end
+		2'd1:    begin rx_sel_lo = rx_buf2; rx_sel_hi = rx_buf3; end
+		default: begin rx_sel_lo = rx_buf4; rx_sel_hi = rx_buf5; end
+	endcase
+end
+
+always @(posedge clk_sys) begin
+	if (sdram_init) begin
+		rx_st       <= RX_IDLE;
+		rx_tile     <= 14'd0;
+		rx_plane    <= 3'd0;
+		rx_row      <= 3'd0;
+		rx_w        <= 2'd0;
+		rx_done     <= 1'b0;
+		rx_rd_req_r <= 1'b0;
+		rx_wr_req_r <= 1'b0;
+	end else begin
+		case (rx_st)
+			RX_IDLE: if (ataxx_sel && dl_settled && !wr_pending) rx_st <= RX_RD_REQ;
+
+			RX_RD_REQ: begin
+				rx_rd_addr_r <= ADDR_GFX_BASE[24:0] + {5'b0, rx_plane, 17'b0} + {8'b0, rx_tile, 3'b000};
+				rx_rd_req_r  <= 1'b1;
+				rx_st        <= RX_RD_WAIT;
+			end
+			RX_RD_WAIT: if (sdram_rd2_ack) begin
+				rx_rd_req_r <= 1'b0;
+				case (rx_plane)
+					3'd0:    rx_buf0 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
+					3'd1:    rx_buf1 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
+					3'd2:    rx_buf2 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
+					3'd3:    rx_buf3 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
+					3'd4:    rx_buf4 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
+					default: rx_buf5 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
+				endcase
+				if (rx_plane == 3'd5) begin
+					rx_row <= 3'd0;
+					rx_w   <= 2'd0;
+					rx_st  <= RX_WR_REQ;
+				end else begin
+					rx_plane <= rx_plane + 3'd1;
+					rx_st    <= RX_RD_REQ;
+				end
+			end
+
+			RX_WR_REQ: begin
+				rx_wr_addr_r <= ADDR_GFXAX_BASE[24:0] + {5'b0, rx_tile, rx_row, 3'b000} + {22'b0, rx_w, 1'b0};
+				rx_wr_lo     <= rx_sel_lo[{rx_row, 3'b000} +: 8];
+				rx_wr_hi     <= rx_sel_hi[{rx_row, 3'b000} +: 8];
+				rx_wr_req_r  <= 1'b1;
+				rx_st        <= RX_WR_WAIT;
+			end
+			RX_WR_WAIT: if (sdram_wr_ack) begin
+				rx_wr_req_r <= 1'b0;
+				if (rx_w != 2'd2) begin
+					rx_w  <= rx_w + 2'd1;
+					rx_st <= RX_WR_REQ;
+				end else begin
+					rx_w <= 2'd0;
+					if (rx_row != 3'd7) begin
+						rx_row <= rx_row + 3'd1;
+						rx_st  <= RX_WR_REQ;
+					end else begin
+						rx_row <= 3'd0;
+						if (rx_tile == 14'd16383) begin
+							rx_st   <= RX_DONE;
+							rx_done <= 1'b1;
+						end else begin
+							rx_tile  <= rx_tile + 14'd1;
+							rx_plane <= 3'd0;
+							rx_st    <= RX_RD_REQ;
+						end
+					end
+				end
+			end
+
+			default: ; // RX_DONE
+		endcase
+	end
+end
+
+wire repack_done = ataxx_sel ? rx_done : repack_done_g;
 
 //------------------------------------------------------------------
 // Per-game EEPROM default content: runs once after repack_done, borrowing the same
@@ -895,13 +1007,13 @@ wire [15:0] eeprom_mem_wr_data = nv_mem_wr_r ? nv_mem_wr_data_r : ee_mem_wr_data
 // Final muxes: the repack FSM and the EEPROM loader borrow rd2/wr while active
 // (mutually exclusive: EE_IDLE only advances once repack_done); otherwise
 // leland_video's request and the ioctl loader's write pass straight through.
-assign sdram_rd2_req  = repack_active ? repack_rd_req_r  : (ee_active ? ee_rd_req_r  : sdram_rd2_req_v);
-assign sdram_rd2_addr = repack_active ? repack_rd_addr_r : (ee_active ? ee_rd_addr_r : sdram_rd2_addr_v);
+assign sdram_rd2_req  = rx_active ? rx_rd_req_r : repack_active ? repack_rd_req_r  : (ee_active ? ee_rd_req_r  : sdram_rd2_req_v);
+assign sdram_rd2_addr = rx_active ? rx_rd_addr_r : repack_active ? repack_rd_addr_r : (ee_active ? ee_rd_addr_r : sdram_rd2_addr_v);
 
-assign sdram_wr_req      = repack_active ? repack_wr_req_r     : wr_pending;
-assign sdram_wr_addr     = repack_active ? repack_wr_addr_r    : sdram_wr_addr_ioctl;
-assign sdram_wr_data     = repack_active ? repack_wr_data_r    : sdram_wr_data_ioctl;
-assign sdram_wr_data_hi  = repack_active ? repack_wr_data_hi_r : sdram_wr_data_hi_ioctl;
+assign sdram_wr_req      = rx_active ? rx_wr_req_r : repack_active ? repack_wr_req_r     : wr_pending;
+assign sdram_wr_addr     = rx_active ? rx_wr_addr_r : repack_active ? repack_wr_addr_r    : sdram_wr_addr_ioctl;
+assign sdram_wr_data     = rx_active ? rx_wr_lo : repack_active ? repack_wr_data_r    : sdram_wr_data_ioctl;
+assign sdram_wr_data_hi  = rx_active ? rx_wr_hi : repack_active ? repack_wr_data_hi_r : sdram_wr_data_hi_ioctl;
 
 //------------------------------------------------------------------
 // Graphics and palette ROMs live in SDRAM like all other ROM content (loaded through
@@ -1176,8 +1288,6 @@ leland_dpram #(.ADDR_WIDTH(11), .DATA_WIDTH(8)) palram
 	.addr_b(pal_addr_vid), .din_b(8'd0), .we_b(1'b0), .dout_b(pal_dout_vid)
 );
 
-assign qram_addr_vid = 16'd0;
-assign pal_addr_vid  = 11'd0;
 
 //------------------------------------------------------------------
 // Color RAM — 1 KB dual-port (Master writes, video reads)
@@ -1705,6 +1815,12 @@ leland_video video
 	.cram_addr(cram_addr_vid),
 	.cram_data(cram_dout_vid),
 
+	.ataxx_mode(ataxx_sel),
+	.qram_addr(qram_addr_vid),
+	.qram_data(qram_dout_vid),
+	.pal_addr(pal_addr_vid),
+	.pal_data(pal_dout_vid),
+
 	.rgb(rgb),
 
 	.scroll_x(scroll_x_m),
@@ -1717,6 +1833,7 @@ leland_video video
 	.sdram_rd2_data (sdram_rd2_data),
 	.sdram_rd2_data16(sdram_rd2_data16),
 	.sdram_rd2_data16_hi(sdram_rd2_data16_hi),
+	.sdram_rd2_data16_w2(sdram_rd2_data16_w2),
 	.fetch_busy     (rd2_fetch_busy),
 	.rbuf_count_out (rd2_rbuf_count),
 

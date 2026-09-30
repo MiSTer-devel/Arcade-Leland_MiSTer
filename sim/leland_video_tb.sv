@@ -245,6 +245,8 @@ leland_video dut
 	.sdram_rd2_addr(sdram_rd2_addr), .sdram_rd2_data(sdram_rd2_data),
 	.sdram_rd2_data16(sdram_rd2_data16),
 	.sdram_rd2_data16_hi(sdram_rd2_data16_hi),
+	.sdram_rd2_data16_w2(16'd0),
+	.ataxx_mode(1'b0), .qram_addr(), .qram_data(8'd0), .pal_addr(), .pal_data(8'd0),
 	.fetch_busy(),
 	.rbuf_count_out(),
 

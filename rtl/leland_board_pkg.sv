@@ -88,6 +88,11 @@ package leland_board_pkg;
 	// ADDR_GFXW_BASE's region.
 	localparam logic [26:0] ADDR_GFXROW_BASE = ADDR_GFXW_BASE + 27'h010000;
 
+	// Ataxx 6-plane repack (board_class GEN4_ATAXX): 8 bytes per tile row, index
+	// tile*8 + row, bytes = plane0..plane5 then 2 pad bytes. It sits right after the
+	// 0xC0000 bytes of raw planes, so the two layouts never coexist in one game.
+	localparam logic [26:0] ADDR_GFXAX_BASE  = ADDR_GFX_BASE + 27'h0C0000;
+
 	localparam logic [26:0] ADDR_PROM_BASE   = 27'h600000; // bg_prom (gen1-3)
 	localparam logic [26:0] PROM_MAX         = 27'h040000; // 256 KB reserved
 

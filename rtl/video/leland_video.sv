@@ -35,6 +35,14 @@ module leland_video
 	output  [9:0] cram_addr,
 	input   [7:0] cram_data,
 
+	// Ataxx board: RAM tilemap (tile RAM) and xRGB-444 palette RAM read ports. With
+	// ataxx_mode low the colour RAM / PROM path above is used and these are idle.
+	input         ataxx_mode,
+	output [15:0] qram_addr,
+	input   [7:0] qram_data,
+	output [10:0] pal_addr,
+	input   [7:0] pal_data,
+
 	// 24-bit RGB output, registered on ce_pix
 	output reg [23:0] rgb,
 
@@ -55,6 +63,7 @@ module leland_video
 	input   [7:0] sdram_rd2_data,
 	input  [15:0] sdram_rd2_data16,    // burst word 0: {plane1, plane0}
 	input  [15:0] sdram_rd2_data16_hi, // burst word 1: {8'h00, plane2}
+	input  [15:0] sdram_rd2_data16_w2, // burst word 2 (Ataxx: {plane5, plane4})
 
 	// High for a whole tile fetch (armed until its last read is acked). The
 	// arbiter's own pending flag drops between the sub-requests, so it uses
@@ -172,12 +181,16 @@ localparam FP_IDLE        = 4'd0,
            FP_GFX_LOOKUP  = 4'd3, // present the index to the gfx cache RAM
            FP_GFXROW_REQ  = 4'd4, // cache data valid: check hit/miss
            FP_GFXROW_WAIT = 4'd5,
-           FP_GFXCACHED   = 4'd6; // cache hit: push next cycle, no SDRAM
+           FP_GFXCACHED   = 4'd6, // cache hit: push next cycle, no SDRAM
+           FP_Q0          = 4'd8, // Ataxx: present the low tile-code address
+           FP_Q1          = 4'd9, // capture low byte, present the high address
+           FP_Q2          = 4'd10; // capture high byte, form the tile code
 
 // Displayed tile
 reg [7:0] bg_color_cur;
 // Named by which third of bg_gfx they came from (see bg_pen below)
 reg [7:0] bg_third0_cur, bg_third1_cur, bg_third2_cur;
+reg [7:0] bg_third3_cur, bg_third4_cur, bg_third5_cur; // Ataxx planes 3-5
 
 //------------------------------------------------------------------
 // Tile prefetch ring buffer
@@ -193,6 +206,9 @@ reg [7:0] rbuf_color [0:7];   // only [7:5] meaningful (PROM colour bits)
 reg [7:0] rbuf_third0[0:7];
 reg [7:0] rbuf_third1[0:7];
 reg [7:0] rbuf_third2[0:7];
+reg [7:0] rbuf_third3[0:7];   // Ataxx only
+reg [7:0] rbuf_third4[0:7];
+reg [7:0] rbuf_third5[0:7];
 reg [2:0] rbuf_wr, rbuf_rd;   // wrap naturally at 8
 reg [3:0] rbuf_count;
 assign rbuf_count_out = rbuf_count;
@@ -201,6 +217,9 @@ wire [7:0] rbuf_color_rd  = rbuf_color [rbuf_rd];
 wire [7:0] rbuf_third0_rd = rbuf_third0[rbuf_rd];
 wire [7:0] rbuf_third1_rd = rbuf_third1[rbuf_rd];
 wire [7:0] rbuf_third2_rd = rbuf_third2[rbuf_rd];
+wire [7:0] rbuf_third3_rd = rbuf_third3[rbuf_rd];
+wire [7:0] rbuf_third4_rd = rbuf_third4[rbuf_rd];
+wire [7:0] rbuf_third5_rd = rbuf_third5[rbuf_rd];
 wire       rbuf_has_data  = (rbuf_count != 4'd0);
 wire       rbuf_has_room  = (rbuf_count != RBUF_N);
 
@@ -351,6 +370,41 @@ always @(posedge clk_sys) begin
 	else if (prom_lc_fill) prom_lc_valid[fetch_col] <= 1'b1;
 end
 
+//------------------------------------------------------------------
+// Ataxx tile fetch (ataxx_mode): the tile code comes from the tile RAM and each tile
+// row is one 4-word burst from the board's repack (bytes plane0..plane5, then 2 pad).
+// A 1024-entry direct-mapped row cache keyed by {code, row-in-tile} skips the burst on
+// a hit. Entry = {valid, tag[6:0], plane0 .. plane5}.
+//------------------------------------------------------------------
+reg  [7:0]  ax_lo;
+reg [13:0]  ax_code;
+wire [16:0] ax_idx  = {ax_code, fetch_riy};
+wire  [9:0] ax_cidx = ax_idx[9:0];
+wire  [6:0] ax_ctag = ax_idx[16:10];
+wire [24:0] ax_row_addr = ADDR_GFXAX_BASE[24:0] + {2'b0, ax_idx, 3'b000};
+
+// Low tile byte at index, high byte at index | 0x4000 (MAME ataxx_get_tile_info)
+assign qram_addr = {fetch_row[6], (fetch_ph == FP_Q1), fetch_row[5:0], fetch_col};
+
+reg [55:0] axcache_mem [0:1023];
+reg  [9:0] axcache_clear_idx;
+reg        axcache_wr_en;
+reg  [9:0] axcache_wr_addr;
+reg [55:0] axcache_wr_data;
+reg [55:0] axcache_rd_r;
+wire       ax_hit = axcache_rd_r[55] && (axcache_rd_r[54:48] == ax_ctag);
+
+always @(posedge clk_sys) begin
+	if (reset) begin
+		axcache_clear_idx <= (axcache_clear_idx == 10'h3FF) ? axcache_clear_idx : (axcache_clear_idx + 10'd1);
+		axcache_mem[axcache_clear_idx] <= 56'd0;
+	end else begin
+		axcache_clear_idx <= 10'd0;
+		if (axcache_wr_en) axcache_mem[axcache_wr_addr] <= axcache_wr_data;
+	end
+	axcache_rd_r <= axcache_mem[ax_cidx];
+end
+
 assign fetch_busy = (fetch_ph != FP_IDLE);
 
 // A push (fetch complete) and a pop (tile boundary) are evaluated
@@ -378,10 +432,12 @@ always @(posedge clk_sys) begin
 		rbuf_rd          <= 3'd0;
 		rbuf_count       <= 4'd0;
 		gfxcache_wr_en   <= 1'b0;
+		axcache_wr_en    <= 1'b0;
 		row_resync_vc_r    <= 9'd0;
 		row_resync_pending <= 1'b1;
 	end else begin
 		gfxcache_wr_en   <= 1'b0;
+		axcache_wr_en    <= 1'b0;
 
 		// A new display row forces one resync to the live position
 		if (vc != row_resync_vc_r) begin
@@ -394,12 +450,12 @@ always @(posedge clk_sys) begin
 		// line-cache read is valid; that replaces an SDRAM round trip on a hit.
 		if ((fetch_ph == FP_IDLE) && rbuf_has_room) begin
 			fetch_col <= tile_col_tgt;
-			fetch_row <= tile_row_tgt;
+			fetch_row <= ataxx_mode ? {1'b0, tile_row_tgt[6:0]} : tile_row_tgt;
 			fetch_riy <= eff_y_tgt[2:0];
 			walk_hc   <= walk_hc_store;
 			walk_vc   <= vc_tgt;
 			row_resync_pending <= 1'b0;
-			fetch_ph  <= FP_PROM_LOOKUP;
+			fetch_ph  <= ataxx_mode ? FP_Q0 : FP_PROM_LOOKUP;
 		end
 
 		// Consumer: pop the next tile at the start of its display window
@@ -408,6 +464,9 @@ always @(posedge clk_sys) begin
 			bg_third0_cur  <= rbuf_third0_rd;
 			bg_third1_cur  <= rbuf_third1_rd;
 			bg_third2_cur  <= rbuf_third2_rd;
+			bg_third3_cur  <= rbuf_third3_rd;
+			bg_third4_cur  <= rbuf_third4_rd;
+			bg_third5_cur  <= rbuf_third5_rd;
 		end
 
 		if (fifo_push && !fifo_pop) rbuf_count <= rbuf_count + 4'd1;
@@ -416,6 +475,15 @@ always @(posedge clk_sys) begin
 		if (fifo_pop)  rbuf_rd <= rbuf_rd + 3'd1;
 
 		case (fetch_ph)
+			FP_Q0: fetch_ph <= FP_Q1;
+			FP_Q1: begin
+				ax_lo    <= qram_data;
+				fetch_ph <= FP_Q2;
+			end
+			FP_Q2: begin
+				ax_code  <= {qram_data[5:0], ax_lo};
+				fetch_ph <= FP_GFX_LOOKUP;
+			end
 			FP_PROM_LOOKUP: begin
 				if (prom_lc_hit) begin
 					prom_byte_next <= prom_lc_q[7:0];
@@ -438,10 +506,10 @@ always @(posedge clk_sys) begin
 				fetch_ph <= FP_GFXROW_REQ;
 			end
 			FP_GFXROW_REQ: begin
-				if (gfx_cache_hit) begin
+				if (ataxx_mode ? ax_hit : gfx_cache_hit) begin
 					fetch_ph <= FP_GFXCACHED;
 				end else begin
-					sdram_rd2_addr_r <= gfxrow_sdram_addr;
+					sdram_rd2_addr_r <= ataxx_mode ? ax_row_addr : gfxrow_sdram_addr;
 					sdram_rd2_req_r  <= 1'b1;
 					fetch_ph         <= FP_GFXROW_WAIT;
 				end
@@ -452,7 +520,13 @@ always @(posedge clk_sys) begin
 				rbuf_third0[rbuf_wr] <= sdram_rd2_data16[7:0];
 				rbuf_third1[rbuf_wr] <= sdram_rd2_data16[15:8];
 				rbuf_third2[rbuf_wr] <= sdram_rd2_data16_hi[7:0];
-				gfxcache_wr_en   <= 1'b1;
+				rbuf_third3[rbuf_wr] <= sdram_rd2_data16_hi[15:8];
+				rbuf_third4[rbuf_wr] <= sdram_rd2_data16_w2[7:0];
+				rbuf_third5[rbuf_wr] <= sdram_rd2_data16_w2[15:8];
+				axcache_wr_en    <= ataxx_mode;
+				axcache_wr_addr  <= ax_cidx;
+				axcache_wr_data  <= {1'b1, ax_ctag, sdram_rd2_data16[7:0], sdram_rd2_data16[15:8], sdram_rd2_data16_hi[7:0], sdram_rd2_data16_hi[15:8], sdram_rd2_data16_w2[7:0], sdram_rd2_data16_w2[15:8]};
+				gfxcache_wr_en   <= ~ataxx_mode;
 				gfxcache_wr_addr <= gfx_cache_idx;
 				gfxcache_wr_data <= {1'b1, gfx_cache_tag, sdram_rd2_data16[7:0], sdram_rd2_data16[15:8], sdram_rd2_data16_hi[7:0]};
 				sdram_rd2_req_r  <= 1'b0;
@@ -460,9 +534,12 @@ always @(posedge clk_sys) begin
 			end
 			FP_GFXCACHED: begin
 				rbuf_color [rbuf_wr] <= prom_byte_next;
-				rbuf_third0[rbuf_wr] <= gfxcache_b0_rd;
-				rbuf_third1[rbuf_wr] <= gfxcache_b1_rd;
-				rbuf_third2[rbuf_wr] <= gfxcache_b2_rd;
+				rbuf_third0[rbuf_wr] <= ataxx_mode ? axcache_rd_r[47:40] : gfxcache_b0_rd;
+				rbuf_third1[rbuf_wr] <= ataxx_mode ? axcache_rd_r[39:32] : gfxcache_b1_rd;
+				rbuf_third2[rbuf_wr] <= ataxx_mode ? axcache_rd_r[31:24] : gfxcache_b2_rd;
+				rbuf_third3[rbuf_wr] <= axcache_rd_r[23:16];
+				rbuf_third4[rbuf_wr] <= axcache_rd_r[15:8];
+				rbuf_third5[rbuf_wr] <= axcache_rd_r[7:0];
 				fetch_ph             <= FP_IDLE;
 			end
 			default: ;
@@ -490,7 +567,12 @@ always @(posedge clk_sys) if (ce_pix) col_in_tile_d <= col_in_tile;
 wire bg_third0 = bg_third0_cur[3'd7 - col_in_tile_d];  // u93 -> pixel bit 2
 wire bg_third1 = bg_third1_cur[3'd7 - col_in_tile_d];  // u94 -> pixel bit 1
 wire bg_third2 = bg_third2_cur[3'd7 - col_in_tile_d];  // u95 -> pixel bit 0
-wire [5:0] bg_pen = {bg_color_cur[2:0], bg_third0, bg_third1, bg_third2};
+// Ataxx: six planes, plane 0 (the first ROM file) is the pen's LSB (verified against the
+// palette: board tiles decode to pens 1-11, the teal ramp, only in this order)
+wire [5:0] ax_pen = {bg_third5_cur[3'd7 - col_in_tile_d], bg_third4_cur[3'd7 - col_in_tile_d],
+                     bg_third3_cur[3'd7 - col_in_tile_d], bg_third2_cur[3'd7 - col_in_tile_d],
+                     bg_third1_cur[3'd7 - col_in_tile_d], bg_third0_cur[3'd7 - col_in_tile_d]};
+wire [5:0] bg_pen = ataxx_mode ? ax_pen : {bg_color_cur[2:0], bg_third0, bg_third1, bg_third2};
 
 //------------------------------------------------------------------
 // Palette lookup and BGR 2-3-3 -> RGB 8-8-8 expansion (MSB replication)
@@ -501,10 +583,27 @@ wire [7:0] col_r = {cram_data[2:0], cram_data[2:0], cram_data[2:1]};
 wire [7:0] col_g = {cram_data[5:3], cram_data[5:3], cram_data[5:4]};
 wire [7:0] col_b = {cram_data[7:6], cram_data[7:6], cram_data[7:6], cram_data[7:6]};
 
+// Ataxx palette: 16-bit xRGB-444 words, low byte (GB) at the even address. The pen is
+// stable for the whole pixel, so the two bytes are read back to back after each ce_pix.
+reg [2:0] pal_ph;
+reg [7:0] pal_lo, pal_hi;
+always @(posedge clk_sys) begin
+	if (ce_pix)               pal_ph <= 3'd0;
+	else if (pal_ph != 3'd7)  pal_ph <= pal_ph + 3'd1;
+	if (pal_ph == 3'd1) pal_lo <= pal_data;
+	if (pal_ph == 3'd2) pal_hi <= pal_data;
+end
+assign pal_addr = {fg_pen, bg_pen, (pal_ph == 3'd1)};
+
+wire [7:0] ax_r = {pal_hi[3:0], pal_hi[3:0]};
+wire [7:0] ax_g = {pal_lo[7:4], pal_lo[7:4]};
+wire [7:0] ax_b = {pal_lo[3:0], pal_lo[3:0]};
+
 always @(posedge clk_sys) begin
 	if (ce_pix) begin
-		if (HBlank || VBlank) rgb <= 24'd0;
-		else                  rgb <= {col_r, col_g, col_b};
+		if (HBlank || VBlank)  rgb <= 24'd0;
+		else if (ataxx_mode)   rgb <= {ax_r, ax_g, ax_b};
+		else                   rgb <= {col_r, col_g, col_b};
 	end
 end
 

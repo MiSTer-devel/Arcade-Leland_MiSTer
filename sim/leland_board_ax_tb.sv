@@ -134,9 +134,49 @@ initial begin
 	         dut.hdr_game_id, dut.hdr_board_class_raw, dut.ataxx_sel);
 	reset = 1'b0;
 
-	#(`RUN_LEN_MS * 1_000_000);
+	#(`RUN_LEN_MS * 64'd1_000_000);
 	$display("=== run end t=%0t ===", $time);
+	ffd = $fopen("vram_ax.bin", "wb");
+	for (k = 0; k < 131072; k = k + 1)
+		$fwrite(ffd, "%c", dut.vram.mem[k]);
+	$fclose(ffd);
+	ffd = $fopen("qram_ax.bin", "wb");
+	for (k = 0; k < 65536; k = k + 1)
+		$fwrite(ffd, "%c", dut.qram.mem[k]);
+	$fclose(ffd);
+	for (k = 0; k < 64; k = k + 1)
+		$display("PAL[%0d]=%02x%02x  PAL[%0d]=%02x%02x", k, dut.palram.mem[2*k+1], dut.palram.mem[2*k],
+		         k + 64, dut.palram.mem[2*(k+64)+1], dut.palram.mem[2*(k+64)]);
 	$finish;
+end
+
+// Frame dump: every 60th frame to frame_ax_<n>.ppm (320x240 visible area)
+reg [23:0] fb [0:320*240-1];
+integer fx = 0, fy = 0, frame_no = 0, ffd, fi;
+reg hb_d = 0, vb_d = 0;
+always @(posedge clk_sys) if (ce_pix && !reset) begin
+	hb_d <= HBlank;
+	vb_d <= VBlank;
+	if (!HBlank && !VBlank && fx < 320 && fy < 240) begin
+		fb[fy*320 + fx] <= rgb;
+		fx <= fx + 1;
+	end
+	if (HBlank && !hb_d) begin
+		fx <= 0;
+		if (!VBlank) fy <= fy + 1;
+	end
+	if (VBlank && !vb_d) begin
+		if (frame_no % 60 == 59) begin
+			ffd = $fopen($sformatf("frame_ax_%0d.ppm", frame_no + 1), "wb");
+			$fwrite(ffd, "P6\n320 240\n255\n");
+			for (fi = 0; fi < 320*240; fi = fi + 1)
+				$fwrite(ffd, "%c%c%c", fb[fi][23:16], fb[fi][15:8], fb[fi][7:0]);
+			$fclose(ffd);
+		end
+		frame_no <= frame_no + 1;
+		fy <= 0;
+		fx <= 0;
+	end
 end
 
 reg [15:0] m_pc, s_pc;
