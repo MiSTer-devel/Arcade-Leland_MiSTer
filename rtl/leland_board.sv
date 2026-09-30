@@ -40,6 +40,19 @@ module leland_board #(
 	input   [7:0] ioctl_data,
 	output        ioctl_wait, // stall HPS while SDRAM write is in progress
 
+	// EEPROM save file (MRA <nvram index="4">). The restore stream is hps_io's own
+	// ioctl_* (nvl_*), not the ones above: leland_ddr_loader replaces those while it
+	// replays the ROM from DDR3, which is exactly when the save file arrives.
+	input         nvl_download,
+	input  [15:0] nvl_index,
+	input         nvl_wr,
+	input  [26:0] nvl_addr,
+	input   [7:0] nvl_data,
+	input   [7:0] nv_rd_addr,
+	output  [7:0] nv_rd_data,
+	output        nv_dirty,
+	input         nv_dirty_clr,
+
 	// SDRAM chip pins (pass-through to top level)
 	inout  [15:0] SDRAM_DQ,
 	output [12:0] SDRAM_A,
@@ -843,9 +856,41 @@ always @(posedge clk_sys) begin
 	end
 end
 
-wire        eeprom_mem_wr      = ee_mem_wr_r;
-wire  [6:0] eeprom_mem_wr_addr = ee_mem_wr_addr_r;
-wire [15:0] eeprom_mem_wr_data = ee_mem_wr_data_r;
+// Saved settings (ioctl_index 4, 128 bytes, or 256 for Ataxx, big-endian words like the
+// default image).
+// They can arrive before or after the default load above, so once a save file has
+// been seen the default load stops writing, and the save file always wins.
+localparam [15:0] NVRAM_INDEX = 16'd4;
+
+reg [26:0] nvl_addr_d1;
+always @(posedge clk_sys) nvl_addr_d1 <= nvl_addr;
+
+wire       ioctl_wr_nv = nvl_wr && nvl_download && (nvl_index == NVRAM_INDEX);
+reg        nv_seen;
+reg  [7:0] nv_hi;
+reg        nv_mem_wr_r;
+reg  [6:0] nv_mem_wr_addr_r;
+reg [15:0] nv_mem_wr_data_r;
+
+always @(posedge clk_sys) begin
+	nv_mem_wr_r <= 1'b0;
+	if (sdram_init) nv_seen <= 1'b0;
+	else if (nvl_download && (nvl_index == NVRAM_INDEX)) nv_seen <= 1'b1;
+
+	if (ioctl_wr_nv && (nvl_addr_d1 < (ataxx_sel ? 27'd256 : 27'd128))) begin
+		if (!nvl_addr_d1[0]) begin
+			nv_hi <= nvl_data;
+		end else begin
+			nv_mem_wr_r      <= 1'b1;
+			nv_mem_wr_addr_r <= nvl_addr_d1[7:1];
+			nv_mem_wr_data_r <= {nv_hi, nvl_data};
+		end
+	end
+end
+
+wire        eeprom_mem_wr      = nv_mem_wr_r | (ee_mem_wr_r & ~nv_seen);
+wire  [6:0] eeprom_mem_wr_addr = nv_mem_wr_r ? nv_mem_wr_addr_r : ee_mem_wr_addr_r;
+wire [15:0] eeprom_mem_wr_data = nv_mem_wr_r ? nv_mem_wr_data_r : ee_mem_wr_data_r;
 
 // Final muxes: the repack FSM and the EEPROM loader borrow rd2/wr while active
 // (mutually exclusive: EE_IDLE only advances once repack_done); otherwise
@@ -1054,6 +1099,8 @@ leland_dpram #(.ADDR_WIDTH(14), .DATA_WIDTH(8)) battram_m
 //------------------------------------------------------------------
 wire eeprom_di_g, eeprom_clk_g, eeprom_cs_g, eeprom_do_g;
 wire eeprom_di_a, eeprom_clk_a, eeprom_cs_a, eeprom_do_a;
+wire [7:0] nv_rd_data_g, nv_rd_data_a;
+wire        nv_dirty_g, nv_dirty_a;
 
 leland_eeprom_93c46 eeprom
 (
@@ -1066,7 +1113,12 @@ leland_eeprom_93c46 eeprom
 
 	.mem_wr(eeprom_mem_wr & ~ataxx_sel),
 	.mem_wr_addr(eeprom_mem_wr_addr[5:0]),
-	.mem_wr_data(eeprom_mem_wr_data)
+	.mem_wr_data(eeprom_mem_wr_data),
+
+	.nv_rd_addr(nv_rd_addr[6:0]),
+	.nv_rd_data(nv_rd_data_g),
+	.nv_dirty(nv_dirty_g),
+	.nv_dirty_clr(nv_dirty_clr)
 );
 
 // Ataxx: 93C56, 128 x 16-bit, read through port 0x20
@@ -1081,8 +1133,16 @@ leland_eeprom_93c56 eeprom_ax
 
 	.mem_wr(eeprom_mem_wr & ataxx_sel),
 	.mem_wr_addr(eeprom_mem_wr_addr),
-	.mem_wr_data(eeprom_mem_wr_data)
+	.mem_wr_data(eeprom_mem_wr_data),
+
+	.nv_rd_addr(nv_rd_addr),
+	.nv_rd_data(nv_rd_data_a),
+	.nv_dirty(nv_dirty_a),
+	.nv_dirty_clr(nv_dirty_clr)
 );
+
+assign nv_rd_data = ataxx_sel ? nv_rd_data_a : nv_rd_data_g;
+assign nv_dirty   = ataxx_sel ? nv_dirty_a   : nv_dirty_g;
 
 //------------------------------------------------------------------
 // Ataxx tile RAM (64 KB) and palette RAM (2 KB, xRGB-444 little-endian words);

@@ -59,6 +59,9 @@ leland_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 	.ioctl_data(ioctl_data),
 	.ioctl_wait(ioctl_wait),
 
+	.nvl_download(1'b0), .nvl_index(16'd0), .nvl_wr(1'b0), .nvl_addr(27'd0), .nvl_data(8'd0),
+	.nv_rd_addr(8'd0), .nv_rd_data(), .nv_dirty(), .nv_dirty_clr(1'b0),
+
 	.SDRAM_DQ(SDRAM_DQ), .SDRAM_A(SDRAM_A), .SDRAM_BA(SDRAM_BA), .SDRAM_CLK(SDRAM_CLK),
 	.SDRAM_CKE(SDRAM_CKE), .SDRAM_nCS(SDRAM_nCS), .SDRAM_nRAS(SDRAM_nRAS),
 	.SDRAM_nCAS(SDRAM_nCAS), .SDRAM_nWE(SDRAM_nWE), .SDRAM_DQML(SDRAM_DQML),

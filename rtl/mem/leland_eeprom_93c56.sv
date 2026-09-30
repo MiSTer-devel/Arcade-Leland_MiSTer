@@ -15,7 +15,13 @@ module leland_eeprom_93c56
 
 	input        mem_wr,
 	input  [6:0] mem_wr_addr,
-	input [15:0] mem_wr_data
+	input [15:0] mem_wr_data,
+
+	// HPS save port: byte address into the 256-byte big-endian image
+	input  [7:0] nv_rd_addr,
+	output [7:0] nv_rd_data,
+	output reg   nv_dirty,
+	input        nv_dirty_clr
 );
 
 reg [15:0] mem [0:127];
@@ -34,10 +40,15 @@ wire clk_rise = clk_in & ~clk_prev;
 wire [6:0]  rd_idx = eaddr + data_bits[10:4];
 wire [15:0] rd_word = mem[rd_idx];
 
+wire [15:0] nv_word = mem[nv_rd_addr[7:1]];
+assign nv_rd_data   = nv_rd_addr[0] ? nv_word[7:0] : nv_word[15:8];
+
 always @(posedge clk_sys) begin
 	clk_prev <= clk_in;
 
 	if (mem_wr) mem[mem_wr_addr] <= mem_wr_data;
+
+	if (nv_dirty_clr) nv_dirty <= 1'b0;
 
 	if (reset || !cs) begin
 		state     <= S_WAIT_START;
@@ -74,8 +85,10 @@ always @(posedge clk_sys) begin
 				end else if (op == 2'b01) begin
 					data_shift <= {data_shift[14:0], di};
 					data_bits  <= data_bits + 12'd1;
-					if (data_bits == 12'd15)
+					if (data_bits == 12'd15) begin
 						mem[eaddr] <= {data_shift[14:0], di};
+						nv_dirty   <= 1'b1;
+					end
 				end
 			end
 		endcase
