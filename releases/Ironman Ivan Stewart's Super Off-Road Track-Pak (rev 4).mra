@@ -6,6 +6,7 @@
 	<manufacturer>Leland Corp.</manufacturer>
 	<category>Driving</category>
 	<rbf>Leland</rbf>
+	<rotation>horizontal</rotation>
 
 	<rom index="0" address="0x30000000" zip="offroadt.zip" md5="None" type="merged">
 		<part>4C 01 03 01 00 00 00 00 00 00 00 00 00 00 00 00</part>
