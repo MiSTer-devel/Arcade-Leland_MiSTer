@@ -107,6 +107,16 @@ wire  [7:0] ioctl_dout;
 // stall, see board_wait below) -- stalls HPS during SDRAM writes / init
 wire        ioctl_wait;
 
+// EEPROM save. nv_dirty (a game write since the last save) requests an upload;
+// hps_io then reads the image byte by byte, addressed by its own ioctl_addr.
+// MRAs declare it as <nvram index="4" size="128"/>.
+wire        ioctl_upload;
+wire        nv_dirty;
+wire  [7:0] nv_rd_data;
+reg         ioctl_upload_d;
+always @(posedge clk_sys) ioctl_upload_d <= ioctl_upload;
+wire        nv_dirty_clr = ioctl_upload & ~ioctl_upload_d;
+
 // Three-player digital buttons ([3]=coin, [2]=btn2, [1]=btn1, [0]=btn0)
 wire [31:0] joy1, joy2, joy3;
 // 4th player (Pig Out only)
@@ -136,6 +146,11 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
 	.ioctl_wait(ioctl_wait),
+
+	.ioctl_upload(ioctl_upload),
+	.ioctl_upload_req(nv_dirty),
+	.ioctl_upload_index(8'd4),
+	.ioctl_din(nv_rd_data),
 
 	.joystick_0(joy1),
 	.joystick_1(joy2),
@@ -326,6 +341,12 @@ leland_board board
 	.ioctl_addr(ld_addr),
 	.ioctl_data(ld_data),
 	.ioctl_wait(board_wait),
+
+	// EEPROM save
+	.nv_rd_addr(ioctl_addr[6:0]),
+	.nv_rd_data(nv_rd_data),
+	.nv_dirty(nv_dirty),
+	.nv_dirty_clr(nv_dirty_clr),
 
 	// SDRAM
 	.SDRAM_DQ  (SDRAM_DQ),

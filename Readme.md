@@ -55,6 +55,10 @@ Enter** acts as Blue Nitro (P3 Nitro), so one controller can select with Nitro
 and enter with Menu Enter. Lives and difficulty are set here; the hardware has
 no DIP switches.
 
+Operator settings and bookkeeping (the game's EEPROM) are saved to the SD card as
+`saves/Leland/<game>.nvm` when you open the OSD after the game has changed them, and are
+restored the next time the game loads. Delete the `.nvm` file to return to the defaults.
+
 ## Known issues
 
 - The first **Service Menu** selection after loading the core does not open the menu in

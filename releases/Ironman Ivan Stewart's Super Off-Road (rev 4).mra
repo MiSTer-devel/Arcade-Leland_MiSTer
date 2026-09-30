@@ -68,4 +68,5 @@
 	-->
 	<buttons names="Nitro,Coin,Gas,Menu Enter"></buttons>
 
+	<nvram index="4" size="128"/>
 </misterromdescription>
