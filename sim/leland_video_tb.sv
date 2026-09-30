@@ -283,7 +283,7 @@ always @(posedge clk_sys) begin
 			nonzero_count = nonzero_count + 1;
 			if (nonzero_count <= 40)
 				$display("t=%0t NONZERO bg_pen tile_col=%0d tile_row=%0d bg_pen=%02x bg_color=%0d prom_byte=%02x gfx0=%02x gfx1=%02x gfx2=%02x",
-				          $time, dut.tile_col, dut.tile_row, dut.bg_pen, dut.bg_color_cur,
+				          $time, dut.tile_col_tgt, dut.tile_row_tgt, dut.bg_pen, dut.bg_color_cur,
 				          dut.prom_byte_next, dut.bg_third0_cur, dut.bg_third1_cur, dut.bg_third2_cur);
 		end
 	end
@@ -311,7 +311,7 @@ always @(posedge clk_sys) begin
 		commit_count = commit_count + 1;
 		if (commit_count <= 20)
 			$display("t=%0t COMMIT #%0d tile_col=%0d tile_row=%0d bg_color_cur=%02x bg_third0_cur=%02x bg_third1_cur=%02x bg_third2_cur=%02x rbuf_count=%0d",
-			          $time, commit_count, dut.tile_col, dut.tile_row,
+			          $time, commit_count, dut.tile_col_tgt, dut.tile_row_tgt,
 			          dut.bg_color_cur, dut.bg_third0_cur, dut.bg_third1_cur, dut.bg_third2_cur, dut.rbuf_count);
 	end
 end
@@ -355,26 +355,20 @@ initial begin
 	ppm_done      = 0;
 	capture_target_frame = 2;
 end
-// NOTE: gate on the DUT's raw hc/vc counters being in-range, NOT on
-// the HBlank/VBlank *outputs* -- those are registered one clk_sys
-// cycle behind hc/vc (see leland_video.sv's "Blanking and sync" block:
-// `HBlank <= (hc >= H_ACTIVE)` uses the pre-edge hc), so the exact
-// combination "hc==0 && vc==0 && !HBlank && !VBlank" is never
-// simultaneously true -- HBlank/VBlank at that instant still reflect
-// the *previous* (blanked) position. Gating the start trigger on that
-// combination silently meant ppm_capturing never turned on and the
-// whole dump was uninitialized (X, written out as 0) -- a full black
-// frame that looked like real data because nonzero_bg_pen (a
-// different always block, unaffected) kept passing.
+// NOTE: gate on the DUT's raw hc/vc counters, not on the HBlank/VBlank
+// outputs. HBlank is now two register stages behind hc (aligned with rgb) and
+// VBlank one, so "hc==0 && vc==0 && !HBlank && !VBlank" is never true at the
+// instant hc/vc wrap, and gating the start trigger on it leaves the whole dump
+// uninitialized.
 always @(posedge clk_sys) begin
 	if (!reset && ce_pix) begin
 		if (!ppm_capturing && !ppm_done && frame_count == capture_target_frame &&
 		    dut.hc == 10'd0 && dut.vc == 9'd0)
 			ppm_capturing = 1;
 		// Screen-coordinate indexing: the pixel pipeline
-		// presents screen pixel N-1 during the hc==N ce window (HBlank/
-		// VBlank/fg vram_latch are all latched from the pre-edge hc, and
-		// the bg path now matches via col_in_tile_d) -- so sample windows
+		// presents screen pixel N-1 during the hc==N ce window (fg vram_latch
+		// is latched from the pre-edge hc, and the bg path matches via
+		// col_in_tile_d) -- so sample windows
 		// hc 1..320 into x 0..319. The old `frame_buf[hc]` indexing was
 		// off by one against the DUT's own blanking alignment, which is
 		// exactly the kind of misalignment this dump exists to catch.

@@ -105,12 +105,20 @@ end
 // scroll_w() calls update_partial() first, so the game relies on mid-frame
 // scroll changes (HUD/status split).
 
+// hblank/hsync follow the pixel pipeline, in which the colour for hc = N is
+// on rgb after the ce_pix that sees hc = N+1. The HBlank and HSync outputs take
+// one more register stage so they change on the same ce_pix as rgb; without it
+// the first picture pixel is blanked and the last one is cut off.
+reg hblank_i, hsync_i;
+
 always @(posedge clk_sys) begin
 	if (ce_pix) begin
-		HBlank <= (hc >= H_ACTIVE);
-		HSync  <= (hc >= H_SYNC_S) && (hc < H_SYNC_E);
-		VBlank <= (vc >= V_ACTIVE);
-		VSync  <= (vc >= V_SYNC_S) && (vc < V_SYNC_E);
+		hblank_i <= (hc >= H_ACTIVE);
+		hsync_i  <= (hc >= H_SYNC_S) && (hc < H_SYNC_E);
+		HBlank   <= hblank_i;
+		HSync    <= hsync_i;
+		VBlank   <= (vc >= V_ACTIVE);
+		VSync    <= (vc >= V_SYNC_S) && (vc < V_SYNC_E);
 	end
 end
 
@@ -277,12 +285,18 @@ assign sdram_rd2_addr = sdram_rd2_addr_r;
 // base_hc/base_vc is the position the next arm is 8 pixels ahead of:
 //   empty buffer                      -> live display position
 //   entries queued, no pending resync -> the walk cursor
-//   entries queued, resync pending    -> live hc plus 8 pixels per queued entry
+//   entries queued, resync pending    -> the boundary of the last queued entry
 // (the buffer is normally full when a row starts, so a bare resync to hc would
-// place the new tile 8*rbuf_count pixels too early).
+// place the new tile 8*rbuf_count pixels too early). The first queued entry
+// pops at the next tile boundary, hc + ((8 - col_in_tile) & 7), and the rest
+// follow 8 pixels apart. The result is boundary-aligned like the walk cursor;
+// an unaligned base shifts every later commit and can push the partial tile at
+// the right edge of the row into the blanking case.
 //------------------------------------------------------------------
+wire  [2:0] col_to_boundary = 3'd0 - col_in_tile;
+wire  [9:0] resync_hc = hc + {7'd0, col_to_boundary} + {rbuf_count - 4'd1, 3'd0};
 wire  [9:0] base_hc = (rbuf_has_data && !row_resync_pending) ? walk_hc :
-                      rbuf_has_data ? (hc + {3'd0, rbuf_count, 3'd0}) : hc;
+                      rbuf_has_data ? resync_hc : hc;
 wire  [8:0] base_vc = (rbuf_has_data && !row_resync_pending) ? walk_vc : vc;
 
 wire  [9:0] commit_pos      = base_hc + 10'd8;
@@ -298,10 +312,12 @@ wire  [7:0] tile_col_tgt = eff_x_tgt[10:3];
 wire  [7:0] tile_row_tgt = eff_y_tgt[10:3];
 
 // What the walk cursor stores for the next step. It differs from hc_tgt only
-// in the blanking case: with a fine scroll_x offset the second tile boundary
-// of the new row is at hc = (8 - fine), not 8.
+// in the blanking case. With a fine scroll_x offset the first tile of the new
+// row is a partial one covering hc = 0 .. 7-fine, and the next boundary is at
+// hc = 8-fine, so the cursor steps back to -fine (mod 1024) and the following
+// commit (+8) lands on that boundary.
 wire [2:0] scroll_x_fine      = scroll_x[2:0];
-wire [9:0] blank_wrap_next_hc = (10'd8 - {7'd0, scroll_x_fine}) & 10'd7;
+wire [9:0] blank_wrap_next_hc = 10'd0 - {7'd0, scroll_x_fine};
 wire [9:0] walk_hc_store = commit_in_blank ? blank_wrap_next_hc : hc_tgt;
 
 //------------------------------------------------------------------
@@ -346,12 +362,12 @@ assign fetch_busy = (fetch_ph != FP_IDLE);
 // would drain a distinct future tile, letting the cursor run away from the
 // display.
 //
-// Known limitation: with scroll_x not a multiple of 8 a row touches 41 tiles
-// but only 40 are popped, so the leftmost ~13 pixels of the row can be wrong.
-// Popping once at hc==0 to pick up the 41st tile was tried and broke the
-// aligned cases.
+// With scroll_x not a multiple of 8 a row touches 41 tiles: a partial tile
+// covering hc = 0 .. 7-fine, then 40 more from hc = 8-fine. The extra pop at
+// hc == 0 picks up that partial tile; when fine == 0 hc == 0 is already a tile
+// boundary and pops once.
 wire fifo_push    = ((fetch_ph == FP_GFXROW_WAIT) && sdram_rd2_ack) || (fetch_ph == FP_GFXCACHED);
-wire fifo_pop_req = ce_pix && (col_in_tile == 3'd0) && (hc < H_ACTIVE);
+wire fifo_pop_req = ce_pix && ((col_in_tile == 3'd0) || (hc == 10'd0)) && (hc < H_ACTIVE);
 wire fifo_pop     = fifo_pop_req && rbuf_has_data;
 
 always @(posedge clk_sys) begin
