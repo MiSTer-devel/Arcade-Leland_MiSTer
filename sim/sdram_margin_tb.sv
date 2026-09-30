@@ -1,13 +1,13 @@
 //============================================================================
 //  sdram_margin_tb.sv — corroborating check for the "TRCD_CYC/TRP_CYC == 1
 //  cycle, zero-margin rounding edge" theory raised while debugging the WP-L2
-//  rd2 (video) SDRAM tearing bug (see rtl/sor_board.sv's rd2_age_cnt/
+//  rd2 (video) SDRAM tearing bug (see rtl/leland_board.sv's rd2_age_cnt/
 //  rd2_boost history and docs/planning_leland_multiboard.md).
 //
 //  sim/sdram_tb.sv (the existing controller testbench) is STALE: it
 //  instantiates a module literally named `sdram` with per-channel
 //  wr/rd0/rd1/rd2 ports -- the OLD internal 4-channel arbitrated design
-//  sor_board.sv's own header comment says was replaced by `sdram_simple`
+//  leland_board.sv's own header comment says was replaced by `sdram_simple`
 //  (single port) + an external arbiter. `rtl/sdram.sv` no longer defines
 //  that `sdram` module at all, so sim/sdram_tb.sv fails at elaboration
 //  (confirmed: vsim-3033 "Instantiation of 'sdram' failed, design unit not
@@ -16,7 +16,7 @@
 //  question at hand rather than a full port of the old test's 4 checks.
 //
 //  PURPOSE: drive sdram_simple (the actual, current single-port controller
-//  rtl/sor_board.sv uses) against Micron's official mt48lc16m16a2 behavioral
+//  rtl/leland_board.sv uses) against Micron's official mt48lc16m16a2 behavioral
 //  model with the SAME back-to-back-different-row read/write pattern the
 //  real board produces under load, and watch whether the model's own
 //  built-in tRCD/tRP/tRC/tRRD/tRAS/tWR timing-violation checks (mt48lc16m16a2.v,
@@ -27,7 +27,7 @@
 //    1. BASELINE: chip model's real datasheet timing parameters (as shipped
 //       in mt48lc16m16a2.v: tRCD=15ns, tRP=15ns, tRC=60ns, tRRD=14ns) against
 //       sdram_simple's actual TRCD_NS=18ns/TRP_NS=18ns/CLK_MHZ=48 config
-//       (rtl/sor_board.sv's real instantiation parameters). If this run is
+//       (rtl/leland_board.sv's real instantiation parameters). If this run is
 //       clean, it means the CURRENT design has real margin against the
 //       actual chip's datasheet minimums -- NOT literally "zero margin" --
 //       even though TRCD_CYC/TRP_CYC compute to exactly 1 clk_sys cycle
@@ -55,7 +55,7 @@ module sdram_margin_tb;
 `define TEST_TRP 15.0
 `endif
 
-localparam CLK_PERIOD = 20.83; // 48 MHz, matches rtl/sor_board.sv's real clk_sys
+localparam CLK_PERIOD = 20.83; // 48 MHz, matches rtl/leland_board.sv's real clk_sys
 
 reg clk = 0;
 always #(CLK_PERIOD/2) clk = ~clk;
@@ -76,7 +76,7 @@ reg         rd, we, we_word;
 wire  [7:0] dout;
 wire        ready, req_done;
 
-// Same CAS_LAT/TRCD_NS/TRP_NS/etc. as rtl/sor_board.sv's real instantiation
+// Same CAS_LAT/TRCD_NS/TRP_NS/etc. as rtl/leland_board.sv's real instantiation
 // (see its sdram_ctrl instance comment) -- this is the actual deployed
 // config, not a hypothetical one.
 sdram_simple #(

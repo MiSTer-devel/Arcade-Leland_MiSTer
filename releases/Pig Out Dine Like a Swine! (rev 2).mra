@@ -5,7 +5,7 @@
 	<year>1990</year>
 	<manufacturer>Leland / Tradewest</manufacturer>
 	<category>Platform</category>
-	<rbf>SuperOffRoad</rbf>
+	<rbf>Leland</rbf>
 
 	<rom index="0" address="0x30000000" zip="pigout.zip" md5="None" type="merged">
 		<part>4C 01 03 02 01 10 00 00 00 00 00 00 00 00 00 00</part>
@@ -61,7 +61,7 @@
 
 	<!--
 	  Per-game button labels. The core's "J1,Nitro,Coin,Gas,Start" string in
-	  SuperOffRoad.sv is a compile-time localparam shared by all three games
+	  Leland.sv is a compile-time localparam shared by all three games
 	  this RBF serves, and is correct only for the WHEELS3_PEDALS3 games
 	  (offroad/offroadt). pigout is JOY4_DIGITAL, where those same four J1
 	  positions land on BUTTON1, BUTTON2, START1, COIN1, so the stock labels

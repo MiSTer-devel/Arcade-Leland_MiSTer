@@ -2,11 +2,11 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road — Board Top Level
+//  Leland - Board Top Level
 //
 //  Connects the master and slave Z80, the video system, the SDRAM controller (program,
 //  sound and tile ROMs), block RAM (VRAM 128 KB, work RAM, colour RAM, EEPROM) and the
-//  80186 sound board (rtl/sor_sound.sv).
+//  80186 sound board (rtl/leland_sound.sv).
 //
 //  SDRAM layout (byte addresses after the 16-byte header; see leland_board_pkg.sv):
 //    0x000000 master Z80 ROM    0x100000 slave Z80 ROM    0x300000 80186 sound ROM
@@ -15,7 +15,7 @@
 
 import leland_board_pkg::*;
 
-module sor_board #(
+module leland_board #(
 	// Passed to the internal sdram controller (see rtl/sdram.sv): 1 is required on
 	// hardware; simulation overrides it to 0 to avoid Altera's simulation libraries.
 	parameter bit USE_ALTDDIO = 1'b1,
@@ -64,7 +64,7 @@ module sor_board #(
 	// Player controls (digital)
 	input   [3:0] p1_btn, p2_btn, p3_btn,
 	// Wheel: free-running mod-256 virtual dial (stick + d-pad + spinner combined by
-	// steering_input.sv); sor_master turns it into MAME's dial_compute_value() encoding.
+	// steering_input.sv); leland_master turns it into MAME's dial_compute_value() encoding.
 	input   [7:0] p1_wheel, p2_wheel, p3_wheel,
 	// Pedal: raw 8-bit value (0 = released, 255 = full), read directly as MAME's
 	// IPT_PEDAL AN0/AN1/AN2 do.
@@ -80,7 +80,7 @@ module sor_board #(
 	// OSD options
 	input         service,
 
-	// Audio (leland_dac_mixer mono output, via sor_sound)
+	// Audio (leland_dac_mixer mono output, via leland_sound)
 	output signed [15:0] audio_out
 );
 
@@ -95,7 +95,7 @@ reg [2:0] ce_z80_cnt = 3'd0; // initialised so simulators do not start with X
 reg [2:0] ce_186_cnt = 3'd0;
 
 wire CE_6M = (ce_z80_cnt == 3'd0);
-wire CE_8M = (ce_186_cnt == 3'd0); // consumed by sor_sound's i186_periph instance
+wire CE_8M = (ce_186_cnt == 3'd0); // consumed by leland_sound's i186_periph instance
 
 always @(posedge clk_sys) begin
 	ce_z80_cnt <= (ce_z80_cnt == 3'd7) ? 3'd0 : ce_z80_cnt + 1'd1;
@@ -132,8 +132,8 @@ wire [24:0] sdram_wr_addr;
 wire  [7:0] sdram_wr_data;
 wire  [7:0] sdram_wr_data_hi;
 
-// Read port 2: sor_video's tile gfx/PROM fetch. sdram_rd2_req/addr feed the arbiter
-// and are muxed (near the gfx-repack FSM) between sor_video's request and the boot-
+// Read port 2: leland_video's tile gfx/PROM fetch. sdram_rd2_req/addr feed the arbiter
+// and are muxed (near the gfx-repack FSM) between leland_video's request and the boot-
 // time repack and EEPROM FSMs, which are never active at the same time as it.
 wire        sdram_rd2_req;
 wire [24:0] sdram_rd2_addr;
@@ -141,10 +141,10 @@ wire        sdram_rd2_req_v;
 wire [24:0] sdram_rd2_addr_v;
 reg         sdram_rd2_ack;
 reg   [7:0] sdram_rd2_data;
-reg  [15:0] sdram_rd2_data16;    // burst word 0, see sor_video.sv
+reg  [15:0] sdram_rd2_data16;    // burst word 0, see leland_video.sv
 reg  [15:0] sdram_rd2_data16_hi; // burst word 1
-wire        rd2_fetch_busy; // whole-tile-burst-in-progress, see sor_video.sv's fetch_busy comment
-wire  [3:0] rd2_rbuf_count; // ring-buffer occupancy, see sor_video.sv's rbuf_count_out comment
+wire        rd2_fetch_busy; // whole-tile-burst-in-progress, see leland_video.sv's fetch_busy comment
+wire  [3:0] rd2_rbuf_count; // ring-buffer occupancy, see leland_video.sv's rbuf_count_out comment
 
 // Read port 0 (master Z80)
 wire        sdram_rd0_req;
@@ -158,7 +158,7 @@ reg         sdram_rd1_ack;
 wire [24:0] sdram_rd1_addr;
 reg   [7:0] sdram_rd1_data;
 
-// Read port 3: sound CPU ROM, via sor_sound's byte-wide rom_req/rom_addr/rom_data/
+// Read port 3: sound CPU ROM, via leland_sound's byte-wide rom_req/rom_addr/rom_data/
 // rom_stall port, built like rd0/rd1.
 wire        sdram_rd3_req;
 reg         sdram_rd3_ack;
@@ -248,12 +248,12 @@ endfunction
 // helping the video.
 //
 // rd2_wait_cnt counts while rd2_fetch_busy (a whole tile burst in progress) rather
-// than a plain req&&!ack: sor_video drops req for one cycle between the sub-requests
+// than a plain req&&!ack: leland_video drops req for one cycle between the sub-requests
 // of a tile, which would reset the count at every boundary.
 localparam URGENT_THRESH   = 8'd32;
 // Escalating earlier (LOW_WATER=2) still lowered rd0/rd1/rd3 throughput in gameplay (a
 // HUD update visibly lagged a nitro pickup) while rd2's own latency stayed in budget.
-localparam RD2_LOW_WATER   = 4'd1; // buffer depth is 8 (RBUF_N in sor_video.sv); escalate only at <=1 of 8
+localparam RD2_LOW_WATER   = 4'd1; // buffer depth is 8 (RBUF_N in leland_video.sv); escalate only at <=1 of 8
 
 reg [7:0] rd2_wait_cnt;
 always @(posedge clk_sys) begin
@@ -630,8 +630,8 @@ assign ioctl_wait   = (wfifo_level >= (1<<(WFIFO_AW-1))) | ~sdram_ready;
 // It builds two derived copies of bg_gfx in SDRAM (the loaded ROM is left as is):
 //   ADDR_GFXW_BASE    16-bit words {plane1, plane0}
 //   ADDR_GFXROW_BASE  4-byte entries {8'h00, plane2, plane1, plane0}, which
-//                     sor_video reads with one 2-word burst
-// It borrows the rd2 and write channels, which are idle then: sor_video is held in
+//                     leland_video reads with one 2-word burst
+// It borrows the rd2 and write channels, which are idle then: leland_video is held in
 // reset until video_release (gated on repack_done) and the ioctl write FIFO has long
 // drained. A plain mux is enough because the users are mutually exclusive in time.
 localparam [16:0] REPACK_LEN = 17'h8000; // one plane's worth of bytes
@@ -759,7 +759,7 @@ end
 // Per-game EEPROM default content: runs once after repack_done, borrowing the same
 // rd2 channel (never active at the same time as the repack). Reads the 128-byte image
 // delivered by the MRA at ADDR_EEPROM_BASE (big-endian words, high byte first, as in
-// sor_eeprom_93c46) and writes all 64 words into the EEPROM before the CPUs start.
+// leland_eeprom_93c46) and writes all 64 words into the EEPROM before the CPUs start.
 //------------------------------------------------------------------
 typedef enum logic [2:0] {
 	EE_IDLE, EE_RD_HI_REQ, EE_RD_HI_WAIT, EE_RD_LO_REQ, EE_RD_LO_WAIT, EE_WR, EE_DONE
@@ -836,7 +836,7 @@ wire [15:0] eeprom_mem_wr_data = ee_mem_wr_data_r;
 
 // Final muxes: the repack FSM and the EEPROM loader borrow rd2/wr while active
 // (mutually exclusive: EE_IDLE only advances once repack_done); otherwise
-// sor_video's request and the ioctl loader's write pass straight through.
+// leland_video's request and the ioctl loader's write pass straight through.
 assign sdram_rd2_req  = repack_active ? repack_rd_req_r  : (ee_active ? ee_rd_req_r  : sdram_rd2_req_v);
 assign sdram_rd2_addr = repack_active ? repack_rd_addr_r : (ee_active ? ee_rd_addr_r : sdram_rd2_addr_v);
 
@@ -847,7 +847,7 @@ assign sdram_wr_data_hi  = repack_active ? repack_wr_data_hi_r : sdram_wr_data_h
 
 //------------------------------------------------------------------
 // Graphics and palette ROMs live in SDRAM like all other ROM content (loaded through
-// the same write FIFO, fetched by sor_video through the rd2 channel); there are no
+// the same write FIFO, fetched by leland_video through the rd2 channel); there are no
 // block-RAM copies.
 //------------------------------------------------------------------
 
@@ -862,7 +862,7 @@ wire  [7:0] vram_dout_cpu;
 wire [16:0] vram_addr_vid;
 wire  [7:0] vram_dout_vid;
 
-sor_dpram #(.ADDR_WIDTH(17), .DATA_WIDTH(8)) vram
+leland_dpram #(.ADDR_WIDTH(17), .DATA_WIDTH(8)) vram
 (
 	.clk(clk_sys),
 	.addr_a(vram_addr_cpu), .din_a(vram_din_cpu), .we_a(vram_we_cpu), .dout_a(vram_dout_cpu),
@@ -871,7 +871,7 @@ sor_dpram #(.ADDR_WIDTH(17), .DATA_WIDTH(8)) vram
 
 //------------------------------------------------------------------
 // VRAM I/O port sequencer — arbitrates the Master's and Slave's
-// sor_vram_port elementary op streams (vp_req/vp_rd/vp_trans/vp_addr/
+// leland_vram_port elementary op streams (vp_req/vp_rd/vp_trans/vp_addr/
 // vp_data) against the single CPU-side VRAM BRAM port A. Fixed
 // priority: Slave first (it is the primary VRAM/blit user), then
 // Master (used far less often -- boot handshake mailbox only).
@@ -911,7 +911,7 @@ always @(posedge clk_sys) begin
 	end else begin
 		case (seq_state)
 				// The !vp_pop_* guards are needed: vp_pop_* are registered one-cycle pulses and
-				// sor_vram_port clears its head on the same edge, so vp_req_* still shows the
+				// leland_vram_port clears its head on the same edge, so vp_req_* still shows the
 				// pre-pop value while seq_state is back here. Without them every op runs twice.
 			SEQ_IDLE: begin
 				vram_we_cpu <= 1'b0;
@@ -993,14 +993,14 @@ wire  [7:0] wram_din_m,  wram_din_s;
 wire        wram_we_m,   wram_we_s;
 wire  [7:0] wram_dout_m, wram_dout_s;
 
-sor_dpram #(.ADDR_WIDTH(12), .DATA_WIDTH(8)) wram_m
+leland_dpram #(.ADDR_WIDTH(12), .DATA_WIDTH(8)) wram_m
 (
 	.clk(clk_sys),
 	.addr_a(wram_addr_m), .din_a(wram_din_m), .we_a(wram_we_m), .dout_a(wram_dout_m),
 	.addr_b(12'd0), .din_b(8'd0), .we_b(1'b0), .dout_b()
 );
 
-sor_dpram #(.ADDR_WIDTH(12), .DATA_WIDTH(8)) wram_s
+leland_dpram #(.ADDR_WIDTH(12), .DATA_WIDTH(8)) wram_s
 (
 	.clk(clk_sys),
 	.addr_a(wram_addr_s), .din_a(wram_din_s), .we_a(wram_we_s), .dout_a(wram_dout_s),
@@ -1017,7 +1017,7 @@ wire  [7:0] battram_din_m;
 wire        battram_we_m;
 wire  [7:0] battram_dout_m;
 
-sor_dpram #(.ADDR_WIDTH(14), .DATA_WIDTH(8)) battram_m
+leland_dpram #(.ADDR_WIDTH(14), .DATA_WIDTH(8)) battram_m
 (
 	.clk(clk_sys),
 	.addr_a(battram_addr_m), .din_a(battram_din_m), .we_a(battram_we_m), .dout_a(battram_dout_m),
@@ -1026,11 +1026,11 @@ sor_dpram #(.ADDR_WIDTH(14), .DATA_WIDTH(8)) battram_m
 
 //------------------------------------------------------------------
 // EEPROM (93C46, 64 x 16-bit): DI/CLK/CS on /MCONT bits 4/5/6, DO on GIN3 bit 0
-// (see sor_master.sv).
+// (see leland_master.sv).
 //------------------------------------------------------------------
 wire eeprom_di, eeprom_clk, eeprom_cs, eeprom_do;
 
-sor_eeprom_93c46 eeprom
+leland_eeprom_93c46 eeprom
 (
 	.clk_sys(clk_sys),
 	.reset(reset),
@@ -1050,11 +1050,11 @@ sor_eeprom_93c46 eeprom
 wire  [9:0] cram_addr_cpu;
 wire  [7:0] cram_din_cpu;
 wire        cram_we_cpu;
-wire  [7:0] cram_dout_cpu;  // palette read-back for the master (see sor_master.sv in_cram)
+wire  [7:0] cram_dout_cpu;  // palette read-back for the master (see leland_master.sv in_cram)
 wire  [9:0] cram_addr_vid;
 wire  [7:0] cram_dout_vid;
 
-sor_dpram #(.ADDR_WIDTH(10), .DATA_WIDTH(8)) cram
+leland_dpram #(.ADDR_WIDTH(10), .DATA_WIDTH(8)) cram
 (
 	.clk(clk_sys),
 	.addr_a(cram_addr_cpu), .din_a(cram_din_cpu), .we_a(cram_we_cpu), .dout_a(cram_dout_cpu),
@@ -1074,8 +1074,8 @@ wire        slave_halt_n;
 // Master Z80 — SDRAM ROM stall logic
 // The ROM line cache below stalls the master Z80 while a line refills.
 //------------------------------------------------------------------
-wire        master_rom_req;          // from sor_master
-wire [17:0] master_rom_addr_w;       // from sor_master (flat 256 KB offset)
+wire        master_rom_req;          // from leland_master
+wire [17:0] master_rom_addr_w;       // from leland_master (flat 256 KB offset)
 reg  [7:0]  master_rom_data_r;       // latched SDRAM byte
 
 // Line cache for the master code fetch (rd0); see rtl/rom_line_cache.sv.
@@ -1117,7 +1117,7 @@ wire  [7:0] gfxbank_m;
 // MAME releases the master Z80 at raster position vpos=240, hpos=0 (the first line
 // of vblank), identically on cold boot and soft reset. To reproduce that fixed phase
 // the release has two stages:
-//   video_release: sor_video's counters are held at 0 until the ROM download has
+//   video_release: leland_video's counters are held at 0 until the ROM download has
 //     finished (sdram_ready, dl_settled, repack_done, on a ce_z80_cnt==0 boundary)
 //     and then start counting from a fixed origin.
 //   cpu_release: the CPUs start on the first ce_z80_cnt==0 after the rising edge of
@@ -1131,7 +1131,7 @@ reg video_release;
 always @(posedge clk_sys) begin
 	if (reset || sdram_init)
 		video_release <= 1'b0;
-	// repack_done: sor_video must not request rd2 until the gfx-repack FSM has finished
+	// repack_done: leland_video must not request rd2 until the gfx-repack FSM has finished
 	// borrowing it. The EEPROM load FSM also borrows rd2 but is deliberately not a gate:
 	// it takes ~29 us, and gating on it delayed cpu_release enough to push the sound
 	// board's boot handshake past its timeout (silent audio). A gfx fetch that lands in
@@ -1165,9 +1165,9 @@ wire  [7:0] sound_ctrl_data;
 wire        sound_ctrl_wr;
 wire [15:0] sound_cmd_wr_data;
 wire        sound_cmd_wr_lo, sound_cmd_wr_hi;
-wire  [7:0] sound_response_data; // 80186 response latch, sor_sound -> sor_master
+wire  [7:0] sound_response_data; // 80186 response latch, leland_sound -> leland_master
 // Master Z80 (held in reset until cpu_release).
-sor_master master
+leland_master master
 (
 	.clk_sys(clk_sys),
 	.reset(reset | ~cpu_release),
@@ -1257,8 +1257,8 @@ sor_master master
 //------------------------------------------------------------------
 // Slave Z80 — SDRAM ROM stall logic (mirror of master scheme)
 //------------------------------------------------------------------
-wire        slave_rom_req;           // from sor_slave
-wire [18:0] slave_rom_addr_w;        // from sor_slave (flat 512 KB offset)
+wire        slave_rom_req;           // from leland_slave
+wire [18:0] slave_rom_addr_w;        // from leland_slave (flat 512 KB offset)
 reg  [7:0]  slave_rom_data_r;        // latched SDRAM byte
 
 // Line cache for the slave code fetch (rd1).
@@ -1292,7 +1292,7 @@ rom_line_cache #(
 // master's /MCONT bit 0 (slave_reset_n). The master releases it once it has
 // finished its own initialisation.
 
-sor_slave slave
+leland_slave slave
 (
 	.clk_sys(clk_sys),
 	.reset(reset | ~cpu_release | ~slave_reset_n),
@@ -1326,7 +1326,7 @@ sor_slave slave
 
 //------------------------------------------------------------------
 // Sound board: s80x86 core + i186_periph + leland_sound_board +
-// leland_dac_mixer, bundled in rtl/sor_sound.sv.
+// leland_dac_mixer, bundled in rtl/leland_sound.sv.
 //------------------------------------------------------------------
 wire        sound_rom_req;
 wire [19:0] sound_rom_addr_w;
@@ -1359,7 +1359,7 @@ rom_line_cache #(
 
 // SIM_NO_SOUND stubs out the 80186 (too slow to simulate) for master/slave-only runs.
 `ifndef SIM_NO_SOUND
-sor_sound sound(
+leland_sound sound(
 	.clk_sys(clk_sys),
 	.reset(reset | ~cpu_release),
 	.ce_8m(CE_8M),
@@ -1388,7 +1388,7 @@ assign audio_out           = 16'h0;
 //------------------------------------------------------------------
 // Video system
 //------------------------------------------------------------------
-sor_video video
+leland_video video
 (
 	.clk_sys(clk_sys),
 	.reset(reset | ~video_release), // phase-locked video release -- see video_release/cpu_release above

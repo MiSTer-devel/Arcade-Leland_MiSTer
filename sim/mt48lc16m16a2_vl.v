@@ -3,11 +3,11 @@
 *  VERILATOR-CLEAN FORK (sim/mt48lc16m16a2_vl.v), created for the
 *  WP-Verilator work package. Derived from Micron's mt48lc16m16a2.v below.
 *  Same module name and port list as the original (including the inout
-*  Dq pin) so it drops into sim/sor_board_tb.sv's `mt48lc16m16a2 chip (...)`
+*  Dq pin) so it drops into sim/leland_board_tb.sv's `mt48lc16m16a2 chip (...)`
 *  instantiation with NO changes to that testbench. VALIDATED: with this
 *  file swapped in for the original (via sim/flist_board_verilator.txt,
 *  a new file list -- flist_board_banked.txt is untouched), the ORIGINAL
-*  unmodified sim/sor_board_tb.sv reports `=== PASS ===` and
+*  unmodified sim/leland_board_tb.sv reports `=== PASS ===` and
 *  `=== RD0CHK_FINAL checks=72 errors=0 ===` under Verilator 5.050
 *  --timing, matching ModelSim's independently-established baseline.
 *
@@ -22,7 +22,7 @@
 *  Dq_reg;`) with two separate signals: `Dq_data_r` (always holds real
 *  bits, never literally z) and `Dq_oe_r` (a plain enable flag), combined
 *  via `assign Dq = Dq_oe_r ? Dq_data_r : {data_bits{1'bz}};` -- the
-*  exact same ternary-with-1'bz-literal idiom rtl/sor_board.sv already
+*  exact same ternary-with-1'bz-literal idiom rtl/leland_board.sv already
 *  uses successfully for its own SDRAM_DQ pin (`assign SDRAM_DQ =
 *  sd_dq_oe ? sd_dq_out : 16'bz;`), which IS a pattern Verilator's
 *  automatic tristate conversion recognizes and handles correctly. All
@@ -255,7 +255,7 @@ module mt48lc16m16a2 (Dq, Addr, Ba, Clk, Cke, Cs_n, Ras_n, Cas_n, We_n, Dqm);
     // note below); CkeZ is its closest equivalent for this timing-CHECK-
     // only signal (Verilator ignores the specify block that uses it).
     wire      Dq_chk           = CkeZ & Data_in_enable;      // Check setup/hold time for DQ
-    // Read-only alias kept ONLY so sim/sor_board_tb.sv's existing
+    // Read-only alias kept ONLY so sim/leland_board_tb.sv's existing
     // hierarchical debug probe (`chip.Sys_clk`, the PINWRITE_CKECHECK
     // display) keeps compiling unmodified -- not used anywhere in the
     // model itself. CkeZ is the closest surviving equivalent signal.
@@ -263,7 +263,7 @@ module mt48lc16m16a2 (Dq, Addr, Ba, Clk, Cke, Cs_n, Ras_n, Cas_n, We_n, Dqm);
     
     // DQ buffer -- clean tristate idiom (see file header).
     assign    Dq               = Dq_oe_r ? Dq_data_r : {data_bits{1'bz}};
-    // Read-only alias kept ONLY so sim/sor_board_tb.sv's existing
+    // Read-only alias kept ONLY so sim/leland_board_tb.sv's existing
     // hierarchical debug probes (`chip.Dq_reg`, e.g. the CHIPDQ display)
     // keep compiling unmodified -- not used anywhere in the model itself.
     wire      [data_bits - 1 : 0] Dq_reg = Dq_oe_r ? Dq_data_r : {data_bits{1'bz}};

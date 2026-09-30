@@ -104,19 +104,19 @@ directly rather than just take that reasoning on faith.
   truth from the chip's own perspective, then flip it back off (it's
   very verbose across a full run).
 
-## Board integration testbench (sor_board_tb.sv)
+## Board integration testbench (leland_board_tb.sv)
 
 `sdram_tb.sv` proved `rtl/sdram.sv` itself correct against a realistic
 concurrent-access pattern (4 tests, 20494 checks, 0 errors) — including
 finding and fixing two real bugs along the way. If real hardware still
 doesn't change after a confirmed-clean rebuild with a passing
 `sdram_tb.sv`, the remaining bug is likely one level up: in
-`sor_board.sv`'s actual ioctl-to-SDRAM write path, the `wr_pending`
+`leland_board.sv`'s actual ioctl-to-SDRAM write path, the `wr_pending`
 latch, or the checksum scan trigger logic — none of which the
 controller-only testbench exercises.
 
-`sor_board_tb.sv` instantiates `sor_board.sv` completely unmodified,
-with its real `sor_master`/`sor_slave` Z80 cores running (genuine
+`leland_board_tb.sv` instantiates `leland_board.sv` completely unmodified,
+with its real `leland_master`/`leland_slave` Z80 cores running (genuine
 CPU-driven SDRAM contention once reset falls, more faithful than a
 synthetic hammering loop), and drives realistic HPS `ioctl_*` signals
 to load the **real Master ROM** — including toggling `ioctl_download`
@@ -135,7 +135,7 @@ was found in.
 ```
 
 The testbench reads them with `$fread` as raw binary, so no conversion
-needed — just the bare files sitting next to `sor_board_tb.sv`. If a
+needed — just the bare files sitting next to `leland_board_tb.sv`. If a
 file is missing it fails fast with an `ERROR: could not open ...`
 message instead of silently running with garbage data.
 
@@ -150,11 +150,11 @@ written) even after the SDRAM controller and ioctl-load path were
 proven byte-perfect. If sim reproduces that same hang, the `IOWR`/
 `PC_SAMPLE` trace should show exactly where Master boot code stalls
 or loops instead of reaching its `/MCONT` write. It then waits for
-`sor_board`'s own internal readback scanner to finish and checks the
+`leland_board`'s own internal readback scanner to finish and checks the
 result directly via hierarchical reference — the same registers
 driving the on-hardware debug overlay, no video rendering needed.
 
-Compile order matters — the tv80 Z80 core and all of `sor_board.sv`'s
+Compile order matters — the tv80 Z80 core and all of `leland_board.sv`'s
 submodules must be included:
 
 ```sh
@@ -165,16 +165,16 @@ vlog -suppress 2244 +incdir+. mt48lc16m16a2.v \
   ../rtl/tv80/rtl/core/tv80_core.v \
   ../rtl/tv80s_ce.v \
   ../rtl/sdram.sv \
-  ../rtl/sor_dpram.sv \
-  ../rtl/sor_vram_port.sv \
-  ../rtl/sor_eeprom_93c46.sv \
-  ../rtl/sor_master.sv \
-  ../rtl/sor_slave.sv \
-  ../rtl/sor_video.sv \
-  ../rtl/sor_board.sv \
-  sor_board_tb.sv
+  ../rtl/leland_dpram.sv \
+  ../rtl/leland_vram_port.sv \
+  ../rtl/leland_eeprom_93c46.sv \
+  ../rtl/leland_master.sv \
+  ../rtl/leland_slave.sv \
+  ../rtl/leland_video.sv \
+  ../rtl/leland_board.sv \
+  leland_board_tb.sv
 
-vsim -c work.sor_board_tb -do "run -all; quit"
+vsim -c work.leland_board_tb -do "run -all; quit"
 ```
 
 This streams a full 256 KB (4 x 64 KB parts) through the real ioctl

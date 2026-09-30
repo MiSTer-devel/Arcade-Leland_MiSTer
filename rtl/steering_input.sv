@@ -23,7 +23,7 @@ module steering_input
 	input              dpad_right,
 	input        [8:0] spinner,        // hps_io spinner_N: [8] = toggle (flips each update), [7:0] = signed delta
 
-	output       [7:0] wheel_pos       // free-running accumulator -> sor_board's p*_wheel port
+	output       [7:0] wheel_pos       // free-running accumulator -> leland_board's p*_wheel port
 );
 
 	// Ramp: full accel/decel over ~8 frames. Deflection is scaled down (>>>3) so a held

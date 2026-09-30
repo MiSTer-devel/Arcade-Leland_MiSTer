@@ -1,25 +1,25 @@
 //============================================================================
-//  sor_board_tb.sv — integration testbench for rtl/sor_board.sv
+//  leland_board_tb.sv — integration testbench for rtl/leland_board.sv
 //
 //  sim/sdram_tb.sv proved rtl/sdram.sv itself correct (4 tests, 20494 checks,
 //  0 errors) against a realistic concurrent-access pattern, yet real hardware
 //  showed no change at all after fixing a real bug found by that testbench.
 //  That means the remaining bug — if any — is in the INTEGRATION layer:
-//  sor_board.sv's actual ioctl-to-SDRAM write path, the wr_pending latch, or
+//  leland_board.sv's actual ioctl-to-SDRAM write path, the wr_pending latch, or
 //  the checksum scan trigger logic, none of which the controller-only
 //  testbench exercises.
 //
-//  This instantiates sor_board.sv completely unmodified, with its real
-//  sor_master/sor_slave Z80 cores running (providing genuine CPU-driven
+//  This instantiates leland_board.sv completely unmodified, with its real
+//  leland_master/leland_slave Z80 cores running (providing genuine CPU-driven
 //  SDRAM contention once reset falls — more faithful than a synthetic
 //  hammering loop), and drives realistic HPS ioctl signals to load a
 //  the real Master ROM (extracted from offroad.zip, see the 4 filenames
 //  below) — including the same toggle-ioctl_download-between-parts behavior
 //  the real MRA's 4-file Master ROM entry produces, which an earlier
 //  session found and fixed a real bug in (see the "ioctl_download toggles
-//  mid-load" note in sor_board.sv).
+//  mid-load" note in leland_board.sv).
 //
-//  After the load finishes and reset falls, it waits for sor_board's
+//  After the load finishes and reset falls, it waits for leland_board's
 //  own internal readback scanner (the same one driving the on-hardware
 //  debug overlay) to finish and checks its result directly via hierarchical
 //  reference — no video/overlay rendering needed.
@@ -27,7 +27,7 @@
 
 `timescale 1ns / 1ps
 
-module sor_board_tb;
+module leland_board_tb;
 
 //----------------------------------------------------------------------
 // Run length (2026-07-24). Was three hardcoded constants (790 ms report
@@ -92,7 +92,7 @@ wire signed [15:0] audio_out;
 // before either CPU is even released from reset). Override down to
 // a few thousand cycles here; synthesis/real hardware still gets the
 // module's real default since only this testbench instance overrides it.
-sor_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
+leland_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 (
 	.clk_sys(clk_sys),
 	.clk_sdram(clk_sdram),
@@ -122,10 +122,10 @@ sor_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 	.HBlank(HBlank), .HSync(HSync), .VBlank(VBlank), .VSync(VSync),
 	.rgb(rgb),
 
-	.p1_btn(4'h0), .p2_btn(4'h0), .p3_btn(`P3BTN),
+	.p1_btn(4'h0), .p2_btn(4'h0), .p3_btn(4'h0),
 	// Hardware-idle values (2026-07-17): SuperOffRoad.sv feeds SIGNED
 	// MiSTer analog (joyX_ana) into these ports; with no stick input
-	// hardware presents 0x00 here, which sor_board's {~msb, [6:0]}
+	// hardware presents 0x00 here, which leland_board's {~msb, [6:0]}
 	// conversion turns into 0x80 at the game-visible ADC ports
 	// ($FD-$FF). The old 8'h80 stubs were signed -128 (hard-left) and
 	// made the game read 0x00 -- the sim never ran with the values
@@ -133,7 +133,8 @@ sor_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 	.p1_wheel(8'h00), .p2_wheel(8'h00), .p3_wheel(8'h00),
 	.p1_pedal(8'h00), .p2_pedal(8'h00), .p3_pedal(8'h00),
 
-	.service(`SVC),
+	.service(1'b0),
+	.free_play(1'b0),
 
 	// Debug overlay (2026-07-25) defaults off in sim -- tb doesn't exercise
 	// the render path, only avoids leaving the port undriven.
@@ -253,7 +254,7 @@ task inject_gameplay_snapshot;
 		// bank_reg==2 (byte-exact against the flat ROM once the
 		// cpu_addr[14:0]-masking fix above is applied to both halves of
 		// the $2000-$9FFF window) -- forced explicitly below since it
-		// won't match sor_master.sv's power-on-reset default of 0.
+		// won't match leland_master.sv's power-on-reset default of 0.
 		//
 		// Master: PC=BDAB SP=EFF8 AF=0500 BC=403F DE=0005 HL=01F8
 		//         IX=E180 IY=E66A AF2=6024 BC2=FF0B DE2=4427 HL2=2566
@@ -338,7 +339,7 @@ task inject_gameplay_snapshot;
 		release dut.slave.slave_cpu.i_tv80_core.IntE_FF2;
 		release dut.slave.slave_cpu.i_tv80_core.IStatus;
 
-		// /MCONT shadow register (rtl/sor_master.sv:513) is never written
+		// /MCONT shadow register (rtl/leland_master.sv:513) is never written
 		// by boot code in this fast-forward path (we skip boot entirely),
 		// so slave_reset_n (mcont_r[0]) would otherwise stay 0 forever,
 		// holding the Slave CPU in permanent reset. Real hardware would
@@ -385,7 +386,7 @@ endtask
 // mra/SuperOffRoad.mra's own <interleave output="16"> map="01"/map="10"
 // pairing for the Sound ROM (word k: low file's byte k at flat_addr+2k,
 // high file's byte k at flat_addr+2k+1) -- same interleaving
-// sim/sor_sound_tb.sv's own load_pair task already reconstructs
+// sim/leland_sound_tb.sv's own load_pair task already reconstructs
 // manually for its direct-array load; this is the ioctl-stream
 // equivalent, needed because ioctl_load_file above only ever streams
 // one already-flat file verbatim.
@@ -433,12 +434,12 @@ endtask
 
 // Real hps_io (sys/hps_io.sv) has a documented quirk, reproduced here
 // on purpose (see the matching root-cause comment on ioctl_addr_d1 in
-// rtl/sor_board.sv): the externally-visible `ioctl_wr` strobe is a
+// rtl/leland_board.sv): the externally-visible `ioctl_wr` strobe is a
 // registered, one-cycle-delayed copy of an internal `wr`, but
 // `ioctl_addr` advances in the SAME cycle `wr` is set, not delayed to
 // match -- so by the time `ioctl_wr` reads 1 externally, `ioctl_addr`
 // has ALREADY advanced to the NEXT byte's address, and `ioctl_data`
-// still holds the CURRENT byte's data. sor_board.sv's `ioctl_addr_d1`
+// still holds the CURRENT byte's data. leland_board.sv's `ioctl_addr_d1`
 // (a plain one-cycle-delayed register of ioctl_addr) exists specifically
 // to undo this and recover the true address of ioctl_data.
 //
@@ -1127,7 +1128,7 @@ end
 // addresses (0xE8F9/0xEAF9, offsets 0x8F9/0xAF9 from WRAM base 0xE000)
 // that Follow-up 18 proved are read as 0xFF on every single chain-walk
 // attempt for the entire run. If the Slave (the code with private WRAM
-// ownership of this table, per rtl/sor_slave.sv's WRAM map) ever writes
+// ownership of this table, per rtl/leland_slave.sv's WRAM map) ever writes
 // a non-FF value here, this will show it -- and if it never fires at
 // all, that's direct, disassembly-independent proof the write is
 // simply missing.
@@ -1288,9 +1289,9 @@ always @(posedge clk_sys) begin
 end
 
 // Follow-up 16 -- stale VRAM-port read checker, per the review's
-// hypothesis: sor_vram_port.sv's vp_stall drops (releasing the Z80's
+// hypothesis: leland_vram_port.sv's vp_stall drops (releasing the Z80's
 // /WAIT) as soon as io_rd_done latches on rd_commit, which can happen
-// BEFORE sor_board's sequencer actually pops the queued read op and
+// BEFORE leland_board's sequencer actually pops the queued read op and
 // updates rd_data_q with the real vp_rdata -- unlike MAME's vram_port_r,
 // which returns the real byte synchronously, same call. If the Z80's IN
 // machine cycle ends (io_rd falls) while that op is still unpopped, the
@@ -1387,7 +1388,7 @@ end
 // comparison against a MAME ground-truth trace of the same four bytes.
 // sim/ instrumentation only -- rtl/ is untouched.
 //
-// dut.master.wram_we (sor_master.sv) = mem_access & ~wr_n & in_wram is
+// dut.master.wram_we (leland_master.sv) = mem_access & ~wr_n & in_wram is
 // a LEVEL signal with no CE_6M gate, so it stays high for several
 // clk_sys ticks across one Z80 write cycle -- sampling it directly at
 // every posedge clk_sys would print the same logical write several
@@ -1416,7 +1417,7 @@ end
 
 `ifdef SCANOUT_DUMP
 // ============================================================
-// SCANOUT_DUMP -- captures ONE full frame of sor_video's real pixel
+// SCANOUT_DUMP -- captures ONE full frame of leland_video's real pixel
 // pen stream (cram_addr = {fg_pen[3:0], bg_pen[5:0]}) near the end of
 // the run, with the CPUs live and generating genuine VRAM-port
 // contention. This is the thing the board TB never otherwise renders:
@@ -1467,109 +1468,10 @@ always @(posedge clk_sys) begin
 end
 `endif // SCANOUT_DUMP
 
-`ifdef RGB_DUMP
-// RGB_DUMP: one full 320x240 frame of the final 24-bit rgb every 250 ms from
-// 2 s on, to rgbseq_<n>.bin (3 bytes/pixel, raster order).
-integer rgb_fd, rgb_n = 0;
-reg rgb_active = 0, rgb_vb_d = 0;
-time rgb_next = 8_000_000_000;
-reg [8*32-1:0] rgb_name;
-always @(posedge clk_sys) begin
-	rgb_vb_d <= dut.video.VBlank;
-	if (!rgb_active && $time >= rgb_next && dut.video.VBlank && !rgb_vb_d) begin
-		rgb_active <= 1;
-		$sformat(rgb_name, "rgbseq_%0d.bin", rgb_n);
-		rgb_fd = $fopen(rgb_name, "wb");
-	end else if (rgb_active && dut.video.VBlank && !rgb_vb_d) begin
-		rgb_active <= 0; $fclose(rgb_fd);
-		$display("=== RGB_DUMP frame %0d t=%0t ===", rgb_n, $time);
-		rgb_n <= rgb_n + 1; rgb_next <= rgb_next + 250_000_000;
-	end
-	if (rgb_active && dut.ce_pix && !dut.video.VBlank && !dut.video.HBlank)
-		$fwrite(rgb_fd, "%c%c%c", dut.rgb[23:16], dut.rgb[15:8], dut.rgb[7:0]);
-end
-`endif // RGB_DUMP
-
-`ifdef PAL_PROBE
-// Print the palette entries the menu uses (pen = {fg[3:0], bg=3}) once, late in the run.
-reg pal_done = 0;
-integer pal_i;
-always @(posedge clk_sys) begin
-	if (!pal_done && $time >= 64'd10200000000) begin
-		pal_done <= 1;
-		for (pal_i = 0; pal_i < 16; pal_i = pal_i + 1)
-			$display("PALPROBE fg=%0d idx=%03x byte=%02x", pal_i, pal_i*64+3, dut.cram.mem[pal_i*64+3]);
-		$display("PALPROBE idx000=%02x idx003=%02x idx3ff=%02x", dut.cram.mem[0], dut.cram.mem[3], dut.cram.mem[1023]);
-	end
-end
-`endif // PAL_PROBE
-
-`ifdef SND_PROBE
-// SND_PROBE: watch the master<->80186 sound handshake (Test path, and boot).
-reg aud_rst_d = 0;
-reg [7:0] f2_last = 8'h5A;
-integer f2_same = 0;
-always @(posedge clk_sys) begin
-	aud_rst_d <= dut.sound.board.audiocpu_reset_n;
-	if (dut.sound.board.audiocpu_reset_n !== aud_rst_d)
-		$display("SND t=%0t 80186 reset_n -> %b", $time, dut.sound.board.audiocpu_reset_n);
-	if (dut.sound_ctrl_wr) $display("SND t=%0t master OUT F0 <= %02x", $time, dut.sound_ctrl_data);
-	if (dut.sound_cmd_wr_lo) $display("SND t=%0t master OUT F2 (cmd_lo) <= %02x", $time, dut.sound_cmd_wr_data[7:0]);
-	if (dut.sound_cmd_wr_hi) $display("SND t=%0t master OUT F4 (cmd_hi) <= %02x", $time, dut.sound_cmd_wr_data[7:0]);
-	if (dut.sound.board.response_wr) $display("SND t=%0t 80186 posts response %02x", $time, dut.sound.board.response_data);
-	if (dut.master.io_rd && dut.master.CE_6M && dut.master.io_cmd) begin
-		if (dut.master.cpu_din !== f2_last) begin
-			$display("SND t=%0t master IN F2 = %02x (was %02x, repeated %0d)", $time, dut.master.cpu_din, f2_last, f2_same);
-			f2_last <= dut.master.cpu_din; f2_same = 0;
-		end else f2_same = f2_same + 1;
-	end
-end
-// Fetch handshake after the first reset release (t>=247 ms): print each change
-reg [3:0] fh_last = 4'hF;
-integer fh_n = 0;
-always @(posedge clk_sys) begin
-	if ($time >= 247_600_000 && fh_n < 80 &&
-	    {dut.sound.instr_m_access, dut.sound.instr_m_ack, dut.sound_rom_req, dut.sound_rom_stall} !== fh_last) begin
-		fh_last <= {dut.sound.instr_m_access, dut.sound.instr_m_ack, dut.sound_rom_req, dut.sound_rom_stall};
-		fh_n = fh_n + 1;
-		$display("SNDFH t=%0t instr_access=%b instr_ack=%b rom_req=%b rom_stall=%b addr=%05x core_reset=%b",
-			$time, dut.sound.instr_m_access, dut.sound.instr_m_ack, dut.sound_rom_req, dut.sound_rom_stall,
-			dut.sound_rom_addr_w, dut.sound.core_reset);
-	end
-end
-// Data returned on instruction fetches (first 40 acks, then each new 4 KB page)
-integer ack_n = 0;
-reg [19:0] ack_page_last = 20'hFFFFF;
-always @(posedge clk_sys) begin
-	if ($time >= 247_600_000 && dut.sound.instr_m_ack && dut.sound.instr_m_access === 1'b0) begin
-		if (ack_n < 40 || ({dut.sound.instr_m_addr,1'b0} >> 12) != ack_page_last) begin
-			$display("SNDACK t=%0t ifetch byte_addr=%05x data=%04x", $time, {dut.sound.instr_m_addr,1'b0}, dut.sound.instr_m_data_in);
-		end
-		ack_page_last <= ({dut.sound.instr_m_addr,1'b0} >> 12);
-		ack_n = ack_n + 1;
-	end
-end
-// 80186 instruction pointer, sampled every 1 ms, printed when it changes
-time ip_next = 0;
-reg [15:0] ip_last = 16'hDEAD;
-integer ip_reps = 0;
-always @(posedge clk_sys) begin
-	if ($time >= ip_next) begin
-		ip_next <= $time + 1_000_000;
-		// sample the 80186 fetch/data bus addresses (word addr) as a poor-man's PC
-		if ($time >= 247_600_000 && ($time % 4_000_000) < 1_000_000)
-			$display("SNDPC t=%0t ifetch_addr=%05x (byte %05x) data_addr=%05x d_acc=%b d_wr=%b d_io=%b resp_wr_seen=%0d",
-				$time, dut.sound.instr_m_addr, {dut.sound.instr_m_addr,1'b0}, {dut.sound.data_m_addr,1'b0},
-				dut.sound.data_m_access, dut.sound.data_m_wr_en, dut.sound.data_m_d_io, 0);
-	end
-end
-`endif // SND_PROBE
-
-
 // ============================================================
 // RD2_DEADLINE_MONITOR -- verification-only instrumentation added for the
-// rd2 aging/priority-boost work (see rtl/sor_board.sv's rd2_age_cnt/
-// rd2_boost block). sor_video_tb.sv's pixel-diff test runs sor_video.sv
+// rd2 aging/priority-boost work (see rtl/leland_board.sv's rd2_age_cnt/
+// rd2_boost block). leland_video_tb.sv's pixel-diff test runs leland_video.sv
 // in isolation (no real CPU bus contention) so it structurally cannot
 // catch a missed video-fetch deadline caused by arbiter contention --
 // this monitor closes that gap by watching the REAL dut.sdram_rd2_req
@@ -1577,8 +1479,8 @@ end
 // board-level testbench.
 //
 // Tracks, in clk_sys cycles, how long dut.sdram_rd2_req has been
-// asserted-but-ungranted (mirrors rd2_pending in sor_board.sv). Flags a
-// "missed deadline" if that ever exceeds ~54 clk_sys cycles (sor_video.sv's
+// asserted-but-ungranted (mirrors rd2_pending in leland_board.sv). Flags a
+// "missed deadline" if that ever exceeds ~54 clk_sys cycles (leland_video.sv's
 // own LEAD=8 arm-to-commit budget) -- i.e. exactly the failure mode
 // attempt 2 (fixed-bottom rd2 priority) hit on real hardware.
 integer rd2_wait_cnt;
@@ -1616,7 +1518,7 @@ end
 // WHOLE-TILE-FETCH deadline monitor (2026-07-22): the rd2_wait_cnt monitor
 // above resets on every sdram_rd2_ack, so it only ever measures a SINGLE
 // one of the 4 serialized SDRAM reads (prom + 3 gfx planes) per tile
-// fetch (rtl/sor_video.sv's fetch_ph drops sdram_rd2_req_r for exactly
+// fetch (rtl/leland_video.sv's fetch_ph drops sdram_rd2_req_r for exactly
 // one cycle between each sub-read -- see FP_PROM_WAIT/FP_GFX0_WAIT/etc).
 // That is a real blind spot: the actual correctness deadline is that ALL
 // 4 reads finish within the 54-cycle arm-to-commit budget, not that each
@@ -1624,7 +1526,7 @@ end
 // monitor can show "missed=0" while the tile as a whole blows the budget.
 // This tracks from the cycle fetch_ph leaves FP_IDLE (arm fires) to the
 // cycle it returns to FP_IDLE (all 4 reads done), the true quantity
-// rtl/sor_video.sv's commit-gate fix (2026-07-22, gating the tile commit
+// rtl/leland_video.sv's commit-gate fix (2026-07-22, gating the tile commit
 // on fetch_ph==FP_IDLE) depends on landing inside budget.
 integer tile_fetch_cyc;
 integer tile_fetch_max;
@@ -1662,7 +1564,7 @@ end
 // RD2_STRESS -- synthetic adversarial rd0/rd1/rd3 traffic (2026-07-21).
 //
 // WHY: the coordinator's request was to stress the rd2_age_cnt/rd2_boost
-// aging-arbiter margin (rtl/sor_board.sv) under WORST-CASE rd0/rd1/rd3
+// aging-arbiter margin (rtl/leland_board.sv) under WORST-CASE rd0/rd1/rd3
 // contention, without waiting for real attract-mode gameplay to organically
 // produce that contention -- at this testbench's simulation speed
 // (~4-5s wall-clock per 1ms simulated), waiting ~26s of real elapsed time
@@ -1672,7 +1574,7 @@ end
 // to generate; this mode instead FORCES the three other read channels to
 // saturate the arbiter as hard as the real client protocol allows --
 // back-to-back requests with only the minimum 1-idle-cycle gap the
-// in_flight release logic requires -- concurrently with sor_video's real,
+// in_flight release logic requires -- concurrently with leland_video's real,
 // unmodified rd2 fetch FSM, which keeps running normally (it only depends
 // on ce_pix/reset, not on CPU program correctness). Master/Slave/Sound CPU
 // correctness is irrelevant and expected to be garbage in this mode --
@@ -1684,7 +1586,7 @@ end
 // Each generator: force req high, wait for its own ack pulse (proof the
 // arbiter granted and completed that transaction), drop req for exactly
 // one clk_sys cycle (the minimum gap in_flight's release logic depends on
-// -- see sor_board.sv's in_flight/issued_req_level comment), then
+// -- see leland_board.sv's in_flight/issued_req_level comment), then
 // immediately re-assert. This is the tightest back-to-back request pattern
 // the real protocol permits, i.e. deliberately worse than any real CPU can
 // produce (a real CPU's own stall logic has its own minimum-gap overhead
@@ -1727,7 +1629,7 @@ end
 `endif // RD2_STRESS
 
 `ifdef FGCK_TRACE
-// Prints sor_video's copyright-region fg checksum (the on-hardware
+// Prints leland_video's copyright-region fg checksum (the on-hardware
 // overlay instrument) at each VBlank rise late in the run -- validates
 // that the RTL counters index pixels identically to the SCANOUT_DUMP
 // capture (python expected: 9C15 for the title screen). The printed
@@ -1753,10 +1655,10 @@ end
 // distribution) even if the $5C00-$5F7F window is never hit.
 // sim/ instrumentation only -- rtl/ is untouched.
 //
-// dut.master.m1_fetch_now (rtl/sor_master.sv) = mem_access & ~m1_n &
+// dut.master.m1_fetch_now (rtl/leland_master.sv) = mem_access & ~m1_n &
 // ~rom_stall is the same fetch strobe the runaway-PC-trap logic uses
 // to catch "one event per opcode fetch" (see the comment above
-// prev_m1_pc in sor_master.sv) -- the tv80 holds m1_n low across
+// prev_m1_pc in leland_master.sv) -- the tv80 holds m1_n low across
 // several CE_6M ticks per fetch, so this must be edge-detected here
 // too, same reasoning as e973_we_d above. dut.master.cpu_addr is the
 // live PC at that exact fetch (stable across the whole m1_fetch_now
@@ -1812,7 +1714,7 @@ end
 // diffing our RTL's Master<->Slave mailbox traffic against a MAME-side
 // trace. sim/ instrumentation only -- rtl/ is untouched.
 //
-// Sampling point: sor_board.sv's VRAM-port sequencer (the always block
+// Sampling point: leland_board.sv's VRAM-port sequencer (the always block
 // at ~line 1710, states SEQ_IDLE/SEQ_ADDR/SEQ_POP/SEQ_TRD/SEQ_TPOP/
 // SEQ_TWR/SEQ_TWPOP) commits/pops each elementary op exactly once, via
 // vp_pop_m/vp_pop_s (registered 1-cycle pulses). This tap fires on
@@ -1826,15 +1728,15 @@ end
 // true hardware completion order (the sequencer is strictly
 // one-op-at-a-time, fixed priority slave-then-master).
 //
-// Op-number recovery: sor_vram_port's internal queue (q0/q1) only
+// Op-number recovery: leland_vram_port's internal queue (q0/q1) only
 // carries an address/data pair, not the original Z80 I/O port op
-// number (1/2/3/5/6 -- see sor_vram_port.sv header). Ops 1 and 2 each
+// number (1/2/3/5/6 -- see leland_vram_port.sv header). Ops 1 and 2 each
 // push TWO elementary writes (even+odd byte) from one Z80 OUT; ops
 // 3/5/6 push exactly one (write or read). To recover the original op
 // number for the trace, a small shadow FIFO per side (depth 4, well
 // over the max ~2 ever in flight) is pushed whenever that side's
 // vport commits a new Z80 I/O cycle (wr_commit/rd_commit, tapped
-// hierarchically -- same signals sor_vram_port itself gates its queue
+// hierarchically -- same signals leland_vram_port itself gates its queue
 // push on), with `op` pushed twice for 1/2 and once for 3/5/6, then
 // popped in the same order the elementary ops complete above. If this
 // somehow underflows, op number 0 is used as an explicit "unknown"
@@ -2018,11 +1920,11 @@ always @(posedge clk_sys) begin
 end
 
 // Follow-up 8 (docs/SESSION_2026-07-14.md) -- cram_we / mcont_r[1] gating
-// fix evidence. The fix added `& mcont_r[1]` to sor_master.sv's cram_we
+// fix evidence. The fix added `& mcont_r[1]` to leland_master.sv's cram_we
 // (matching MAME's m_palette_view select(0)/disable() in
 // leland_master_output_w case 0x09), on the hypothesis that ungated
 // stray writes to 0xF000-0xF3FF were corrupting the fg-indexed Color RAM
-// entries sor_video.sv's cram_addr={fg_pen,bg_pen} reads sprites/portrait/
+// entries leland_video.sv's cram_addr={fg_pen,bg_pen} reads sprites/portrait/
 // flag color from. A hardware reflash with the fix made NO visible
 // difference (still no Ironman/flag/cars), so this traces the ACTUAL
 // organic write attempts (not just the mcont_r write events already
@@ -2277,7 +2179,7 @@ always @(posedge clk_sys) begin
 end
 
 //------------------------------------------------------------------
-// NMI wiring verification probe (2026-07-14 fix): rtl/sor_slave.sv's
+// NMI wiring verification probe (2026-07-14 fix): rtl/leland_slave.sv's
 // tv80 core previously had nmi_n hardwired 1'b1 (dead wire), so the
 // Slave's NMI handler ($0066: increments WRAM $EF06) could never run
 // and $EF06 could never move off its reset value of 0x00. Watch $EF06
@@ -2335,7 +2237,7 @@ end
 // evidence the fix is broken. To actually exercise the new nmi_n
 // wiring, force/release the Master's own `mcont_r[2]` shadow bit --
 // the exact storage element `assign slave_nmi_n = mcont_r[2]` reads
-// from in rtl/sor_master.sv -- to inject one realistic ASSERT-then-
+// from in rtl/leland_master.sv -- to inject one realistic ASSERT-then-
 // CLEAR NMI edge once boot has settled, then confirm $EF06 (the
 // Slave's NMI-handler counter, rtl disassembly: $0066 increments it)
 // moves as a direct, immediate result. Real hardware's actual NMI
@@ -2366,12 +2268,12 @@ end
 // not RTL behavior). Follow-up 4 (docs/SESSION_2026-07-14.md) named the
 // Master's OTIR VRAM burst-write routines (0x612c-0x6151 family, real
 // port 0x0B = op3/inc/non-trans) and the Slave-only transparent-write
-// ops (SEQ_TRD/TPOP/TWR/TWPOP in rtl/sor_board.sv) as the next suspect
+// ops (SEQ_TRD/TPOP/TWR/TWPOP in rtl/leland_board.sv) as the next suspect
 // for the hardware garbage-spray symptom, and noted neither had been
 // exercised by any sim run so far -- only small mailbox clear/poll
 // traffic had been traced up to that point.
 //
-// This drives rtl/sor_vram_port.sv's Slave instance (dut.slave.vport,
+// This drives rtl/leland_vram_port.sv's Slave instance (dut.slave.vport,
 // TRANS_EN=1) directly at its I/O boundary -- forcing
 // cpu_addr/cpu_dout/io_wr/io_rd/io_vram_sel exactly as a real OUT/IN
 // ($xx) bus cycle would present them to the module, honoring vp_stall
@@ -2393,7 +2295,7 @@ end
 // PASS = every byte lands at exactly the address this testbench's own
 // reference model (mirroring MAME leland_v.cpp's vram_port_r/w
 // addressing/merge math, already audited byte-for-byte equivalent to
-// rtl/sor_vram_port.sv in an earlier session) predicts, with no
+// rtl/leland_vram_port.sv in an earlier session) predicts, with no
 // drop/duplicate, under both pacings.
 //
 // Gated behind +define+VPTEST: the test freezes and later un-freezes
@@ -2449,7 +2351,7 @@ endtask
 
 // Reference model for op3's address math -- mirrors MAME leland_v.cpp
 // exactly (`addr += inc & (addr << 1); addr ^= 1;`) and
-// rtl/sor_vram_port.sv's addr_op3_next: increment (+2) lands only when
+// rtl/leland_vram_port.sv's addr_op3_next: increment (+2) lands only when
 // inc is requested AND the address is currently odd, then bit0 toggles.
 function automatic [15:0] vp_ref_op3_next(input [15:0] a, input inc);
 	vp_ref_op3_next = (a + ((inc && a[0]) ? 16'd2 : 16'd0)) ^ 16'd1;
@@ -2613,7 +2515,7 @@ initial begin
 	// faster than any real "otir" loop, deliberately hammering the
 	// 2-deep queue's vp_stall backpressure. PASS here (no drop/duplicate
 	// even under this unrealistic pacing) is the strongest evidence the
-	// queue's "hold, never drop" contract (sor_vram_port.sv's 2026-07-12
+	// queue's "hold, never drop" contract (leland_vram_port.sv's 2026-07-12
 	// header note) actually holds. ---
 	force dut.slave.vport.addr_q = 16'h7100;
 	@(posedge clk_sys);
@@ -2649,7 +2551,7 @@ end
 
 //------------------------------------------------------------------
 // SLAVE ROM BANK-MAP DIRECTED TEST (2026-07-15, TEST-ONLY, not RTL
-// behavior). Follow-up 5 (docs/SESSION_2026-07-14.md) found rtl/sor_slave.sv
+// behavior). Follow-up 5 (docs/SESSION_2026-07-14.md) found rtl/leland_slave.sv
 // had been implementing MAME leland.cpp's slave_small_map_program (bank
 // register at memory 0xF803, 48 KB banked window at 0x2000-0xDFFF), but
 // offroad's machine config (`lelandi`) actually installs
@@ -2672,7 +2574,7 @@ end
 //   (b) a subsequent read at address A in 0x4000-0xBFFF computes
 //       rom_addr = 0x10000 + 0x8000*N + (A-0x4000) (checked immediately,
 //       purely combinational -- no SDRAM wait needed), AND once the
-//       real SDRAM path (sor_board's sdram_rd1_* arbitration) services
+//       real SDRAM path (leland_board's sdram_rd1_* arbitration) services
 //       the request, rom_data matches the real byte sitting in the ROM
 //       chip file on disk at the corresponding offset -- not just the
 //       RTL's own arithmetic re-checking itself.
@@ -2697,7 +2599,7 @@ endtask
 
 // Forces a memory write of `n` to the slave's 0xC000 bank register,
 // held across a full CE_6M period (8 clk_sys cycles) so the
-// `always @(posedge clk_sys) if (CE_6M && ...)` in sor_slave.sv is
+// `always @(posedge clk_sys) if (CE_6M && ...)` in leland_slave.sv is
 // guaranteed to sample it at least once, then releases the forces.
 task sb_write_bank(input [3:0] n);
 	begin
@@ -2901,9 +2803,9 @@ initial begin
 end
 
 // CORRECTION (2026-07-24, after the first offroad run): arming on
-// !ioctl_download was WRONG for the gfx census. sor_video is held in reset
+// !ioctl_download was WRONG for the gfx census. leland_video is held in reset
 // until `video_release` (~155 ms, gated on repack_done -- see
-// rtl/sor_board.sv:1709-1712, "hc/vc are held at 0 the entire time"), so
+// rtl/leland_board.sv:1709-1712, "hc/vc are held at 0 the entire time"), so
 // during that whole window hc and col_in_tile sit at 0 and
 // `fifo_pop_req = ce_pix && (col_in_tile==0) && (hc < H_ACTIVE)` is TRUE on
 // EVERY ce_pix tick -- ~7.159 MHz x 155 ms = ~1.1M phantom pops against an
@@ -2936,12 +2838,12 @@ end
 //   1. The master polls a handshake and the RESPONDER is slow. The master
 //      is executing, not stalled -- full speed by that metric.
 //   2. The SLAVE is the bottleneck. It has its own independent stall path
-//      (rtl/sor_slave.sv:129) which nothing was measuring.
+//      (rtl/leland_slave.sv:129) which nothing was measuring.
 //   3. Per-frame work overruns the frame, so game logic slips to every
 //      other vblank -- a ~50% speed drop with zero memory stalls.
 //
 // The slave is the drawing CPU in Leland and master<->slave communicate
-// through SHARED VRAM (rtl/sor_board.sv:1538, mailbox ~0xEF06), so the
+// through SHARED VRAM (rtl/leland_board.sv:1538, mailbox ~0xEF06), so the
 // VRAM port sits on the handshake's critical path. `vport_stall` here is
 // therefore the prime suspect for a whole-game slowdown, and it is
 // counted separately from ROM/SDRAM stalls for the same reason as on the
@@ -3449,8 +3351,8 @@ end
 // Background tile-row FIFO underrun census (2026-07-24)
 //
 // Unlike the CPU, the video path CANNOT stall -- pixel timing is fixed,
-// so when sor_video's tile-row ring buffer is empty at a pop deadline it
-// falls back to HOLDING THE PREVIOUS TILE (sor_video.sv ~line 690). That
+// so when leland_video's tile-row ring buffer is empty at a pop deadline it
+// falls back to HOLDING THE PREVIOUS TILE (leland_video.sv ~line 690). That
 // is a stale-pixel failure mode: a starved fetch shows up on screen as
 // repeated/leftover tile content, not as a slowdown.
 //
@@ -3666,9 +3568,9 @@ initial begin
 
 	// ── Sound ROM: 0x300000-0x3FFFFF (80186's own 0x00000-0xFFFFF
 	// address space, offset by leland_board_pkg::ADDR_SOUND_BASE --
-	// matches sdram_rd3_addr's own base in rtl/sor_board.sv). Same 3
+	// matches sdram_rd3_addr's own base in rtl/leland_board.sv). Same 3
 	// interleaved lo/hi pairs, same base offsets within the 80186's own
-	// space, as mra/SuperOffRoad.mra and sim/sor_sound_tb.sv's own
+	// space, as mra/SuperOffRoad.mra and sim/leland_sound_tb.sv's own
 	// load_pair.
 	$display("t=%0t  Sound ROM...", $time);
 	ioctl_load_pair("03-22113-03.u13t", "03-22116-03.u25t", HDR_LEN + 27'h300000 + 27'h040000);
@@ -3698,13 +3600,13 @@ initial begin
 	// hierarchically read dut.gfx_rom/dut.prom_rom) no longer applies --
 	// those BRAM arrays are gone; gfx/prom content now lands in SDRAM
 	// through the same wfifo->SDRAM-write pipeline as master/slave/sound
-	// (see sor_board.sv's wr_gate_hi/ADDR_PROM_REAL_HI). Content-level
+	// (see leland_board.sv's wr_gate_hi/ADDR_PROM_REAL_HI). Content-level
 	// correctness for the gfx/prom fetch path is covered by
-	// sim/sor_video_tb.sv's pixel-diff regression against
+	// sim/leland_video_tb.sv's pixel-diff regression against
 	// sim/bg_reference.py, which exercises the real rd2 SDRAM fetch FSM
 	// end-to-end; this board-level testbench's job is compile/wiring
 	// integration only (CPUs, arbiter plumbing), not gfx/prom content.
-	$display("=== GFX/PROM content check moved to sim/sor_video_tb.sv (WP-L2) ===");
+	$display("=== GFX/PROM content check moved to sim/leland_video_tb.sv (WP-L2) ===");
 
 	$display("=== Load complete at t=%0t, dropping reset ===", $time);
 	reset = 1'b0;
@@ -3713,7 +3615,7 @@ initial begin
 	// Synthetic adversarial rd0/rd1/rd3 traffic run (see the RD2_STRESS
 	// generator processes above) -- let sdram_ready/dl_settled/video_release
 	// genuinely settle first (same real gating every other mode relies on),
-	// then saturate rd0/rd1/rd3 for STRESS_RUN_CYCLES while sor_video's real,
+	// then saturate rd0/rd1/rd3 for STRESS_RUN_CYCLES while leland_video's real,
 	// unmodified rd2 fetch FSM runs concurrently, and let the
 	// RD2_DEADLINE_MONITOR (declared earlier in this file) do the actual
 	// measurement over that whole window.
@@ -3729,8 +3631,8 @@ initial begin
 	release dut.sdram_rd3_req;
 	release dut.sdram_rd3_addr;
 `elsif GAMEPLAY_REPRO
-	// sor_master's REAL reset input is `reset | ~sdram_ready | ~dl_settled`
-	// (rtl/sor_board.sv:1628), not the testbench's raw `reset` register --
+	// leland_master's REAL reset input is `reset | ~sdram_ready | ~dl_settled`
+	// (rtl/leland_board.sv:1628), not the testbench's raw `reset` register --
 	// dl_settled only goes true DL_SETTLE_CYCLES after ioctl_download
 	// falls. Injecting right after `reset <= 1'b0` (as a first attempt
 	// here did) lands inside that still-asserted window: the CPU's own
@@ -3812,10 +3714,10 @@ end
 // docs/WP10_PROGRESS.md "Two ways to get a real audio capture" -- this
 // is option 2): tracks real command traffic from the REAL Master Z80
 // ROM code into the sound board (via its actual 0xF2/0xF4 port writes,
-// sor_master.sv's io_cmd/io_snd_hi decode -- no synthetic bench-driven
-// guessing, unlike sim/sor_sound_tb.sv's own attempt, which never
+// leland_master.sv's io_cmd/io_snd_hi decode -- no synthetic bench-driven
+// guessing, unlike sim/leland_sound_tb.sv's own attempt, which never
 // learned the real command protocol and so never produced audible
-// content) and the resulting DAC activity. Mirrors sor_sound_tb.sv's
+// content) and the resulting DAC activity. Mirrors leland_sound_tb.sv's
 // own counters/WAV-capture convention.
 //------------------------------------------------------------------
 longint unsigned board_cmd_wr_count = 0;
@@ -3833,7 +3735,7 @@ end
 `endif
 
 // WAV capture of dut.audio_out -- same real-time-accurate decimation
-// convention as sor_sound_tb.sv (48,000,000/44,100 ~= 1088 clk_sys
+// convention as leland_sound_tb.sv (48,000,000/44,100 ~= 1088 clk_sys
 // cycles/sample).
 localparam integer BOARD_SAMPLE_PERIOD_CLKS = 1088;
 localparam integer BOARD_WAV_SAMPLE_RATE_HZ = 44100;
@@ -3841,7 +3743,7 @@ integer board_pcm_fd;
 integer board_sample_div;
 longint unsigned board_wav_sample_count = 0;
 initial begin
-	board_pcm_fd = $fopen("sor_board_tb_audio.pcm", "wb");
+	board_pcm_fd = $fopen("leland_board_tb_audio.pcm", "wb");
 	board_sample_div = 0;
 end
 always @(posedge clk_sys) begin
@@ -3868,7 +3770,7 @@ task automatic stitch_board_wav;
 		data_bytes = board_wav_sample_count * 2;
 		byte_rate  = BOARD_WAV_SAMPLE_RATE_HZ * 2;
 		riff_bytes = 36 + data_bytes;
-		wav_fd = $fopen("sor_board_tb_audio.wav", "wb");
+		wav_fd = $fopen("leland_board_tb_audio.wav", "wb");
 		$fwrite(wav_fd, "RIFF"); board_wav_u32(wav_fd, riff_bytes);
 		$fwrite(wav_fd, "WAVE"); $fwrite(wav_fd, "fmt ");
 		board_wav_u32(wav_fd, 16);
@@ -3877,7 +3779,7 @@ task automatic stitch_board_wav;
 		board_wav_u32(wav_fd, byte_rate);
 		board_wav_u16(wav_fd, 2); board_wav_u16(wav_fd, 16);
 		$fwrite(wav_fd, "data"); board_wav_u32(wav_fd, data_bytes);
-		rd_fd = $fopen("sor_board_tb_audio.pcm", "rb");
+		rd_fd = $fopen("leland_board_tb_audio.pcm", "rb");
 		c = $fgetc(rd_fd);
 		while (c != -1) begin
 			$fwrite(wav_fd, "%c", c[7:0]);
@@ -3885,7 +3787,7 @@ task automatic stitch_board_wav;
 		end
 		$fclose(rd_fd);
 		$fclose(wav_fd);
-		$display("=== SOUND_BOARD_AUDIO wav written: sor_board_tb_audio.wav (%0d samples @ %0d Hz) cmd_wr_count=%0d dac_write_count=%0d dac9_write_count=%0d ===",
+		$display("=== SOUND_BOARD_AUDIO wav written: leland_board_tb_audio.wav (%0d samples @ %0d Hz) cmd_wr_count=%0d dac_write_count=%0d dac9_write_count=%0d ===",
 		          board_wav_sample_count, BOARD_WAV_SAMPLE_RATE_HZ, board_cmd_wr_count, board_dac_write_count, board_dac9_write_count);
 	end
 endtask
@@ -3909,7 +3811,7 @@ initial begin
 	// the late /MCONT reset pulse at ~869.8ms was a genuine deadlock --
 	// Follow-up 4 killed that hypothesis, confirmed sim-timeout artifact,
 	// not a real hang) and isn't needed for this investigation. Real
-	// hardware's frame rate is 65.95Hz (15.16ms/frame, sor_video.sv
+	// hardware's frame rate is 65.95Hz (15.16ms/frame, leland_video.sv
 	// header); MAME's real title/hints art finishes by frame ~36
 	// (~546ms after boot) per Follow-up 9/12's fg_bitmap_early_boot_trace
 	// -- our sim's boot handshake completes at t~83ms, so 83+546=~629ms
@@ -4308,7 +4210,7 @@ always @(posedge clk_sys) begin
 		// reached -- this is just a debug-trace file-size limit, not a
 		// correctness gate, so widening it is safe.
 		// WP-L3 (2026-07-24): bumped from 300ms -- the new per-game EEPROM
-		// boot-load FSM (sor_board.sv's ee_st) is sequenced after repack_done
+		// boot-load FSM (leland_board.sv's ee_st) is sequenced after repack_done
 		// and gates video_release/cpu_release the same way repack_done does,
 		// pushing total pre-boot-handshake time out further again. Same
 		// non-correctness rationale as the 150ms->300ms bump above; the real

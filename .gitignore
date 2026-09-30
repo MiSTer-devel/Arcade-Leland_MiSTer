@@ -39,7 +39,7 @@ c5_pin_model_dump.txt
 *.cdf
 **/.DS_Store
 
-# Copyrighted MAME ROM dumps used only for local sim/sor_board_tb.sv
+# Copyrighted MAME ROM dumps used only for local sim/leland_board_tb.sv
 # runs — never commit these, extract from offroad.zip locally instead.
 #
 # roms_src/ holds per-game extracted dumps (offroadt/, pigout/) and was NOT

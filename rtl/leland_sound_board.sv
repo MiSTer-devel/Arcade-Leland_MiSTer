@@ -9,7 +9,7 @@
 // peripheral_r/w, `select = offset >> 6`) and the whole-64K I/O-space DAC write path
 // (dac_w), and passes everything else through to system RAM/ROM.
 //
-// Scope: the third-generation ("leland"/Super Off-Road) sound board only -- six 8-bit
+// Scope: the third-generation (Leland/Super Off-Road) sound board only -- six 8-bit
 // DACs (indices 0-5), one 10-bit DAC (dac9, PCS select 4) and two PIT8254s (select 2/3).
 //
 // Bus addresses (`*_addr[19:1]`) are word addresses, with the byte lane selected by

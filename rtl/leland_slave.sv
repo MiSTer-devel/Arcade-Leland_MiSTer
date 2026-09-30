@@ -2,7 +2,7 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road - slave Z80
+//  Leland - slave Z80
 //
 //  Memory map (MAME leland.cpp slave_large_map_program, used by the `lelandi` machine
 //  config):
@@ -14,7 +14,7 @@
 //    0xE000-0xEFFF  work RAM (private to the slave)
 //    0xF800/0xF801  VRAM address low/high (write; bit 7 of the high byte = addr[16])
 //    0xF802         raster line counter (read)
-//  I/O 0x00-0x1F (mirror 0x40): leland_svram_port_r/w, see sor_vram_port.sv
+//  I/O 0x00-0x1F (mirror 0x40): leland_svram_port_r/w, see leland_vram_port.sv
 //  (op = addr[2:0], inc = addr[3], transparency = addr[4]).
 //
 //  Inter-CPU: there is no command port between the two Z80s. The master asserts the
@@ -23,7 +23,7 @@
 //  slave signals back by executing HALT, which the master polls on GIN1 bit 0.
 //============================================================================
 
-module sor_slave
+module leland_slave
 (
 	input         clk_sys,
 	input         reset,
@@ -33,7 +33,7 @@ module sor_slave
 	output [18:0] rom_addr,
 	input   [7:0] rom_data,
 
-	// VRAM I/O port op stream (to sor_board's VRAM sequencer)
+	// VRAM I/O port op stream (to leland_board's VRAM sequencer)
 	output        vp_req,
 	output        vp_rd,
 	output        vp_trans,
@@ -97,7 +97,7 @@ wire in_banked  = (cpu_addr >= 16'h4000) && (cpu_addr <= 16'hBFFF);
 wire rom_read_cyc = mem_access & ~rd_n & (in_fixed | in_banked);
 assign rom_req = rom_read_cyc;
 
-// vport_stall (from sor_vram_port below, forward-declared): holds the CPU in /WAIT
+// vport_stall (from leland_vram_port below, forward-declared): holds the CPU in /WAIT
 // instead of overwriting a VRAM port op that has not drained yet.
 wire vport_stall;
 
@@ -133,7 +133,7 @@ assign slave_halt_n = halt_n;
 // ROM banking (MAME slave_large_map_program / slave_large_banksw_w): the bank register
 // at 0xC000 (bits [3:0]) selects a 32 KB window at 0x4000-0xBFFF:
 //   bankaddress = 0x10000 + 0x8000 * bank_reg, and bank_reg >= 14 falls back to 0x10000.
-// Offsets are within the slave ROM region (sor_board adds ADDR_SLAVE_BASE):
+// Offsets are within the slave ROM region (leland_board adds ADDR_SLAVE_BASE):
 //   0x00000 u3 (8 KB, fixed bank)      0x02000-0x2FFFF zero fill
 //   0x30000 u4t  bank_reg 4/5          0x40000 u5t  bank_reg 6/7
 //   0x50000 u6t  bank_reg 8/9          0x60000 u7t  bank_reg 10/11
@@ -169,7 +169,7 @@ assign wram_we   = mem_access & ~wr_n & in_wram;
 
 //------------------------------------------------------------------
 // VRAM I/O port (leland_svram_port_r/w + slave_video_addr_w); the operation semantics
-// live in sor_vram_port.sv. TRANS_EN=1 enables the slave's bit-4 transparency ops.
+// live in leland_vram_port.sv. TRANS_EN=1 enables the slave's bit-4 transparency ops.
 wire io_rd   = ~iorq_n & ~rd_n;
 wire io_wr   = ~iorq_n & ~wr_n;
 // MAME slave_map_io installs this handler at 0x00-0x1F with .mirror(0x40),
@@ -181,7 +181,7 @@ wire vidlat_wr = CE_6M && mem_access && ~wr_n && in_f8xx && (cpu_addr[7:1] == 7'
 
 wire [7:0] vram_rd_data;
 
-sor_vram_port #(.TRANS_EN(1'b1)) vport
+leland_vram_port #(.TRANS_EN(1'b1)) vport
 (
 	.clk_sys(clk_sys),
 	.reset(reset),

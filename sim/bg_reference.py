@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """bg_reference.py -- software reference model of the Leland background
-tilemap (MAME leland_v.cpp semantics), used to pixel-diff sor_video_tb's
+tilemap (MAME leland_v.cpp semantics), used to pixel-diff leland_video_tb's
 PPM dumps against ground truth computed directly from the ROM files.
 
 Implements exactly:

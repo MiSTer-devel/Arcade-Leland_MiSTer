@@ -2,7 +2,7 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road — Master Z80 CPU
+//  Leland - Master Z80 CPU
 //
 //  Leland Master Z80 memory map (validated against MAME leland.cpp):
 //    0x0000-0x1FFF  ROM fixed bank (always master_rom[0x00000..0x01FFF])
@@ -12,7 +12,7 @@
 //                   RAM view instead (see master_redline_map_program /
 //                   offroad_bankswitch's update_battery_ram_view call)
 //    0xE000-0xEFFF  Work RAM (4 KB, PRIVATE -- never shared with Slave;
-//                   see sor_board.sv's wram_m/wram_s comment)
+//                   see leland_board.sv's wram_m/wram_s comment)
 //    0xF000-0xF3FF  Color RAM (1 KB, palette entries BGR 2-3-3)
 //    0xF800-0xF801  Video address latches (slave triggers sprite blit)
 //
@@ -36,7 +36,7 @@
 
 import leland_board_pkg::*;
 
-module sor_master
+module leland_master
 (
 	input         clk_sys,
 	input         reset,
@@ -59,13 +59,13 @@ module sor_master
 	output        battram_we,
 	input   [7:0] battram_dout,
 
-	// Color RAM — master writes palette; video reads (sor_video)
+	// Color RAM — master writes palette; video reads (leland_video)
 	output  [9:0] cram_addr,
 	output  [7:0] cram_din,
 	output        cram_we,
 	input   [7:0] cram_dout,   // palette RAM read-back (port A of the color RAM)
 
-	// VRAM I/O port op stream (to sor_board's VRAM sequencer) --
+	// VRAM I/O port op stream (to leland_board's VRAM sequencer) --
 	// leland_mvram_port_r/w, installed by init_master_ports at
 	// mvram_base=0x00 and 0x40 (see leland.cpp init_offroad()).
 	output        vp_req,
@@ -111,7 +111,7 @@ module sor_master
 	output [15:0] scroll_x,
 	output [15:0] scroll_y,
 
-	// Graphics bank (MAME m_gfxbank / sor_video gfxbank), set through the AY-3-8910 port A
+	// Graphics bank (MAME m_gfxbank / leland_video gfxbank), set through the AY-3-8910 port A
 	// write callback: the ROM writes a register select (I/O 0x0A, /OGIA) then data (0x0B,
 	// /OGID), relocated like /MCONT. Only register 0x0E is tracked; the rest of the AY
 	// only affects audio.
@@ -120,7 +120,7 @@ module sor_master
 	// Slave HALT status (wired to GIN1 bit 0, active-low)
 	input         slave_halt_n,
 
-	// EEPROM (93C46, sor_eeprom_93c46) -- DI/CLK/CS are /MCONT bits
+	// EEPROM (93C46, leland_eeprom_93c46) -- DI/CLK/CS are /MCONT bits
 	// 4/5/6 (leland_master_output_w), DO feeds GIN3 bit0 above.
 	output        eeprom_di,
 	output        eeprom_clk,
@@ -130,7 +130,7 @@ module sor_master
 	// VBlank for GIN3 bit 1 timing sync
 	input         vblank,
 
-	// Raster line counter (from sor_video), used to generate the periodic
+	// Raster line counter (from leland_video), used to generate the periodic
 	// "VA10" interrupt every 16 scanlines starting at line 8 (validated
 	// against MAME leland_m.cpp leland_interrupt_callback).
 	input   [7:0] raster_line,
@@ -185,7 +185,7 @@ reg   [7:0] cpu_din;
 // implicit net at first use in a port connection, which then conflicts with a later
 // explicit declaration.
 wire int_n_final;
-wire mvport_stall; // from sor_vram_port: holds the CPU in /WAIT instead of overwriting
+wire mvport_stall; // from leland_vram_port: holds the CPU in /WAIT instead of overwriting
                    // a VRAM port op that has not drained yet
 
 tv80s_ce #(.Mode(0), .T2Write(1), .IOWait(1)) master_cpu
@@ -230,7 +230,7 @@ end
 
 // The periodic VA10 raster interrupt is the only master INT source in MAME; the CPUs
 // otherwise communicate through the shared VRAM mailbox and the SLAVEHALT/GIN1 poll
-// (see sor_slave.sv).
+// (see leland_slave.sv).
 assign int_n_final = periodic_int_n;
 
 //------------------------------------------------------------------
@@ -270,7 +270,7 @@ wire in_battram    = in_high & (bank_reg == 3'd1);       // battery RAM view sel
 wire in_fixed_high = in_high & ~in_battram;              // falls through to fixed ROM
 wire in_wram       = (cpu_addr[15:12] == 4'hE);          // 0xE000-0xEFFF
 
-// ROM read indicator used by sor_board to drive SDRAM stall logic --
+// ROM read indicator used by leland_board to drive SDRAM stall logic --
 // excludes in_battram, which is real RAM, not SDRAM-backed ROM.
 assign rom_req = mem_access & ~rd_n & (in_fixed | in_banked_lo | in_fixed_high);
 wire in_cram   = (cpu_addr[15:10] == 6'b111100);        // 0xF000-0xF3FF
@@ -354,7 +354,7 @@ wire io_mvram = (cpu_addr[7:5] == mvram_base[7:5]) ||
 //------------------------------------------------------------------
 wire [7:0] vram_rd_data;
 
-sor_vram_port #(.TRANS_EN(1'b0)) mvport
+leland_vram_port #(.TRANS_EN(1'b0)) mvport
 (
 	.clk_sys(clk_sys),
 	.reset(reset),

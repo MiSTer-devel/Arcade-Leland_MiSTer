@@ -79,7 +79,7 @@ module sdram_banked #(
 	output logic                         req_done,
 
 	// Diagnostic: pulses combinationally on the S_IDLE cycle a request is accepted,
-	// classified against bank_sel's open row (page_hit). sor_board gates it by the asserted
+	// classified against bank_sel's open row (page_hit). leland_board gates it by the asserted
 	// channel's sel_* to build per-channel page-hit-rate counters.
 	output logic                         req_hit,
 
@@ -380,7 +380,7 @@ module sdram_banked #(
 	// registered update becomes visible. req_done's READ condition (wait_cnt==0) would
 	// otherwise land on the capture cycle itself, one cycle early, and acknowledge the
 	// stale rdata_reg/dout. Only req_done is delayed; wait_cnt and the READ command timing
-	// are unchanged, and sor_board's in_flight gate (not `ready`) blocks a new request until
+	// are unchanged, and leland_board's in_flight gate (not `ready`) blocks a new request until
 	// req_done fires.
 	// For a burst, read_capture_sr[0] fires once per word, but req_done must ack once,
 	// after the last word. burst_cnt is the pre-increment index, so it still reads

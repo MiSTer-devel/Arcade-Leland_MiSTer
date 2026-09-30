@@ -44,7 +44,7 @@
 module sdram_burst_tb;
 
 localparam int BURST_LEN = `BURST_LEN;
-localparam CLK_PERIOD = 20.83; // 48 MHz, matches rtl/sor_board.sv's real clk_sys
+localparam CLK_PERIOD = 20.83; // 48 MHz, matches rtl/leland_board.sv's real clk_sys
 
 reg clk = 0;
 always #(CLK_PERIOD/2) clk = ~clk;
@@ -68,7 +68,7 @@ wire [15:0] dout16;
 wire        ready, req_done, req_hit;
 wire [7:0][15:0] burst_words;
 
-// Same CAS_LAT/TRCD_NS/TRP_NS/etc. as rtl/sor_board.sv's real instantiation
+// Same CAS_LAT/TRCD_NS/TRP_NS/etc. as rtl/leland_board.sv's real instantiation
 // (see sdram_margin_tb.sv's identical comment) -- the actual deployed
 // config, not a hypothetical one. BURST_LEN is the one axis this TB varies.
 sdram_banked #(
@@ -139,7 +139,7 @@ end
 // referenced hierarchically -- legitimate for a testbench) instead of
 // inferring acceptance from `ready` alone. `req_accept` is already exactly
 // "this cycle, out of S_IDLE, with no refresh preemption, rd/we/we_word was
-// sampled" -- the same condition the real client (rtl/sor_board.sv) doesn't
+// sampled" -- the same condition the real client (rtl/leland_board.sv) doesn't
 // need to reconstruct because it gates on its own in_flight/req_done
 // instead of on the controller's ready.
 task automatic do_read(input [1:0] bnk, input [22:0] a);
@@ -232,7 +232,7 @@ initial begin
 		// of minimal synthetic write-then-immediate-read testbenches against
 		// this Micron behavioral model (most likely a command-adjacency
 		// quirk this TB's simplified task pattern doesn't fully account
-		// for -- the real client, rtl/sor_board.sv, never issues a read
+		// for -- the real client, rtl/leland_board.sv, never issues a read
 		// this tightly coupled to a write of the same address in practice),
 		// not a WP-M6/burst-specific defect. Words [1..BURST_LEN-1] are
 		// still compared exactly, which is sufficient to catch any real

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road -- CRT frame retimer (DDR3 frame store, photometric V size)
+//  Leland - CRT frame retimer (DDR3 frame store, photometric V size)
 //
 //  Decouples the analog output timing from the game's native timing
 //  (424x256 @ 65.955 Hz) so a CRT sees standard NTSC 240p while the game,
@@ -10,7 +10,7 @@
 //
 //  Write side : samples the game's video (rgb + HBlank/VBlank) on the game's
 //               ce_pix and stores each active pixel as its 8-bit BGR 2-3-3
-//               colour (the palette byte layout, see sor_video.sv col_r/g/b:
+//               colour (the palette byte layout, see leland_video.sv col_r/g/b:
 //               the 24-bit expansion is exactly reversible from 8 bits). Eight
 //               pixels are packed into one 64-bit word and written to DDR3.
 //  Read side  : independent generator, 6.857 MHz (clk_sys/7), 436x262 =
@@ -21,7 +21,7 @@
 //  RAM used is two small line buffers and the gamma ROM.
 //  Layout (64-bit word index): {frame[1:0], line*40 + x/8}, 16384 words per
 //  frame, at DDR byte address 0x38000000 (the ROM staging area used by the
-//  fast loader is at 0x30000000, see sor_ddr_loader.sv).
+//  fast loader is at 0x30000000, see leland_ddr_loader.sv).
 //
 //  Frame handover: three buffers (write / last-completed / display). The
 //  reader switches to the newest completed frame only as it enters vertical
@@ -41,11 +41,11 @@
 //  the source levels exactly).
 //
 //  `stop` keeps this module off the DDR3 bus (used while the ROM is being
-//  loaded / replayed by sor_ddr_loader). Everything is on clk_sys
+//  loaded / replayed by leland_ddr_loader). Everything is on clk_sys
 //  (DDRAM_CLK = clk_sys), so there is no clock-domain crossing.
 //============================================================================
 
-module sor_retimer
+module leland_retimer
 #(
 	parameter GAMMA_HEX = "rtl/gamma_inv.hex"
 )

@@ -1,5 +1,5 @@
 //============================================================================
-//  sor_video_tb.sv — standalone testbench for rtl/sor_video.sv
+//  leland_video_tb.sv — standalone testbench for rtl/leland_video.sv
 //
 //  Isolates the background ROM-tilemap fetch pipeline from the CPUs/boot
 //  sequence entirely: loads the real bg_gfx/bg_prom ROM chip files
@@ -37,7 +37,7 @@
 
 import leland_board_pkg::*;
 
-module sor_video_tb;
+module leland_video_tb;
 
 localparam CLK_PERIOD = 20.83; // 48 MHz
 
@@ -46,7 +46,7 @@ always #(CLK_PERIOD/2) clk_sys = ~clk_sys;
 
 reg reset = 1;
 
-// Pixel clock: 7.159090 MHz from 48 MHz -- exact copy of sor_board.sv's
+// Pixel clock: 7.159090 MHz from 48 MHz -- exact copy of leland_board.sv's
 // ce_pix generation, so this testbench matches real timing precisely.
 reg [15:0] pix_acc = 16'd0;
 reg        ce_pix_r = 0;
@@ -69,7 +69,7 @@ wire [7:0]  cram_data = 8'h00; // palette lookup not needed -- probing bg_pen di
 wire [23:0] rgb;
 
 // WP-L2: gfx/prom fetch now goes through an SDRAM-style req/ack
-// handshake (sor_board.sv's rd2 arbiter channel on real hardware).
+// handshake (leland_board.sv's rd2 arbiter channel on real hardware).
 // This standalone TB has no arbiter/sdram_simple, so it fakes one
 // directly against the same gfx_rom/prom_rom arrays below, with an
 // artificial multi-cycle latency (matching real sdram_simple's ~5
@@ -92,7 +92,7 @@ reg [15:0] tb_scroll_y = 16'h0188;
 reg [7:0]  tb_gfxbank  = 8'h03;
 
 // Real bg_gfx (96KB, 3x32KB planes) and bg_prom (128KB sparse, 4x16KB +
-// gaps) ROM content, loaded exactly like sor_board.sv's flat-image
+// gaps) ROM content, loaded exactly like leland_board.sv's flat-image
 // layout (see its ADDR_GFX_LO/ADDR_PROM_LO comments and load order).
 reg [7:0] gfx_rom  [0:17'h17FFF];
 reg [7:0] prom_rom [0:17'h1FFFF];
@@ -120,7 +120,7 @@ endtask
 
 initial begin
 	// bg_gfx: u93+u94+u95, 32KB each, contiguous (matches
-	// ADDR_GFX_LO..ADDR_PROM_LO layout in sor_board.sv)
+	// ADDR_GFX_LO..ADDR_PROM_LO layout in leland_board.sv)
 	load_file("03-22105-02.u93", 0, 32768);
 	for (i = 0; i < 32768; i = i + 1) gfx_rom[i] = file_buf[i];
 	load_file("03-22106-02.u94", 0, 32768);
@@ -169,8 +169,8 @@ reg  [3:0] rd2_cnt;
 reg [24:0] rd2_addr_lat;
 reg [15:0] sdram_rd2_data16;
 reg [15:0] sdram_rd2_data16_hi; // WP-M8: second burst word of a GFXROW read
-// Edge-detect the request, not level: sor_video's FSM (like every real
-// SDRAM client in this project, see sor_board.sv's arbiter "duplicate-
+// Edge-detect the request, not level: leland_video's FSM (like every real
+// SDRAM client in this project, see leland_board.sv's arbiter "duplicate-
 // transaction race" comment) holds sdram_rd2_req_r high through the
 // cycle its ack is registered and only drops it the FOLLOWING cycle --
 // so a naive level check (`!busy && req`) re-accepts that same still-
@@ -195,13 +195,13 @@ always @(posedge clk_sys) begin
 			                      prom_rom[rd2_addr_lat - ADDR_PROM_BASE[24:0]] :
 			                      gfx_rom [rd2_addr_lat - ADDR_GFX_BASE[24:0]];
 			// Wider-reads path (2026-07-22): this standalone TB has no
-			// gfx-repack FSM (that lives in sor_board.sv, exercised by
-			// sor_board_tb.sv's full-board sim instead) -- synthesize the
+			// gfx-repack FSM (that lives in leland_board.sv, exercised by
+			// leland_board_tb.sv's full-board sim instead) -- synthesize the
 			// packed word on the fly from the same flat gfx_rom content
 			// instead, {plane1[i], plane0[i]}, i = word index within
-			// ADDR_GFXW_BASE, matching rtl/sor_board.sv's repack layout
+			// ADDR_GFXW_BASE, matching rtl/leland_board.sv's repack layout
 			// exactly so anything still reading ADDR_GFXW_BASE gets
-			// identical data either way. Nothing in sor_video.sv's live
+			// identical data either way. Nothing in leland_video.sv's live
 			// fetch path reads this range any more as of WP-M8 (superseded
 			// by ADDR_GFXROW_BASE below), kept only in case anything else
 			// ever exercises it directly.
@@ -211,7 +211,7 @@ always @(posedge clk_sys) begin
 			end
 			// WP-M8 (2026-07-24): ADDR_GFXROW_BASE packed entry, same
 			// synthesis idea as ADDR_GFXW_BASE above but 4-byte-aligned
-			// (matching rtl/sor_board.sv's repack FSM RP_WR2/RP_WR3
+			// (matching rtl/leland_board.sv's repack FSM RP_WR2/RP_WR3
 			// states) -- word0={plane1,plane0} (identical content to
 			// GFXW's entry), word1={8'h00,plane2}. idx = byte offset >> 2.
 			if (rd2_addr_lat >= ADDR_GFXROW_BASE[24:0] && rd2_addr_lat < ADDR_PROM_BASE[24:0]) begin
@@ -227,7 +227,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-sor_video dut
+leland_video dut
 (
 	.clk_sys(clk_sys),
 	.reset(reset),
@@ -267,7 +267,7 @@ reg vblank_prev;
 // nonzero_count alone was proven a false positive last time -- tile 0's
 // own plane bytes are nonzero regardless of whether addressing/fetch is
 // actually correct, since tile 0 isn't "blank" in gfx_rom, it's real
-// PROM content (see rtl/sor_board.sv's gfx_fp_8003 comment: expected
+// PROM content (see rtl/leland_board.sv's gfx_fp_8003 comment: expected
 // 0xFF at tile-0/plane-1/row-3). A real racetrack scene should exercise
 // many distinct tile codes and pen values, not just repeatedly land on
 // one. seen_tile_code/seen_pen are presence bitmaps; distinct_* are the
@@ -335,7 +335,7 @@ integer distinct_tile_code, distinct_pen;
 // loaded), so the DUT's real `rgb` output would be uniformly black --
 // useless for a structural comparison. Instead this dump visualizes
 // bg_pen directly (grayscale, pen<<2, 0..252) sampled at the same
-// point sor_video commits it (posedge clk_sys, valid across the
+// point leland_video commits it (posedge clk_sys, valid across the
 // pixel's full active window) -- this carries exactly the "which
 // tile, which pixel-within-tile" structural information a scrambling
 // bug would corrupt, without needing a working palette.
@@ -359,7 +359,7 @@ initial begin
 end
 // NOTE: gate on the DUT's raw hc/vc counters being in-range, NOT on
 // the HBlank/VBlank *outputs* -- those are registered one clk_sys
-// cycle behind hc/vc (see sor_video.sv's "Blanking and sync" block:
+// cycle behind hc/vc (see leland_video.sv's "Blanking and sync" block:
 // `HBlank <= (hc >= H_ACTIVE)` uses the pre-edge hc), so the exact
 // combination "hc==0 && vc==0 && !HBlank && !VBlank" is never
 // simultaneously true -- HBlank/VBlank at that instant still reflect
@@ -486,7 +486,7 @@ initial begin
 
 	// Case 4: scroll_x fine offset non-zero (eff_x[2:0] = 3, i.e.
 	// scroll_x[2:0]=3'd3). Per the row-wrap-lookahead fix's own
-	// analysis (see sor_video.sv comment above fetch_col_p4/tile_row_p4),
+	// analysis (see leland_video.sv comment above fetch_col_p4/tile_row_p4),
 	// scroll_x[2:0]=3 is one of the phases where the OLD "+1, same row"
 	// heuristic was NOT actually buggy (only {0,5,6,7} were) -- so this
 	// case is a differential check: same track content, offset by 3

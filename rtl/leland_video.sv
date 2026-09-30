@@ -2,7 +2,7 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road - video timing and pixel output
+//  Leland - video timing and pixel output
 //
 //  Leland hardware timing (MAME leland_v.cpp):
 //    pixel clock 7.159090 MHz (14.318181 MHz / 2)
@@ -16,7 +16,7 @@
 
 import leland_board_pkg::*;
 
-module sor_video
+module leland_video
 (
 	input         clk_sys,
 	input         reset,

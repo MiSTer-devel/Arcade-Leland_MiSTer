@@ -2,7 +2,7 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road — 93C46 3-wire serial EEPROM (64 x 16-bit)
+//  Leland - 93C46 3-wire serial EEPROM (64 x 16-bit)
 //
 //  Standard Microwire protocol, as in MAME leland.cpp/leland_m.cpp (64 words x 16 bits).
 //    Wiring (leland_master_output_w, /MCONT write, port 0x09):
@@ -16,7 +16,7 @@
 //  opcodes are accepted but are no-ops (no write-protect model).
 //============================================================================
 
-module sor_eeprom_93c46
+module leland_eeprom_93c46
 (
 	input        clk_sys,
 	input        reset,
@@ -25,7 +25,7 @@ module sor_eeprom_93c46
 	input        di,      // data in (MCONT bit4)
 	output reg   do_out,  // data out (GIN3 bit0)
 
-	// Per-game default-content load port: sor_board's boot FSM writes all 64 words here
+	// Per-game default-content load port: leland_board's boot FSM writes all 64 words here
 	// (from the MRA image at leland_board_pkg::ADDR_EEPROM_BASE) before releasing the CPUs.
 	input        mem_wr,
 	input  [5:0] mem_wr_addr,

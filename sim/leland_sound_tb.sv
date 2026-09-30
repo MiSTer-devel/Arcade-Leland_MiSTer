@@ -1,4 +1,4 @@
-// sor_sound_tb -- standalone integration test for rtl/sor_sound.sv
+// leland_sound_tb -- standalone integration test for rtl/leland_sound.sv
 // (WP10's MiSTer-integration wrapper: real Core + first-level instr/
 // data arbiter + i186_periph (incl. WP8 DMA) + leland_sound_board +
 // leland_dac_mixer + on-chip RAM + a byte-wide SDRAM-style ROM
@@ -21,17 +21,17 @@
 // /RESET deasserted (bit7=1) -- unlike leland_sound_smoketest_tb.sv
 // (which drove Core.reset directly, bypassing the control-latch reset
 // chain entirely), this bench exercises the REAL reset path now that
-// it's actually wired through (sor_sound.sv's own core_reset = reset |
+// it's actually wired through (leland_sound.sv's own core_reset = reset |
 // ~audiocpu_reset_n), so something has to play the master Z80's role
 // of releasing it, exactly once, matching the real protocol's own
 // "write once at boot" shape.
 
 `timescale 1ns / 1ps
 
-module sor_sound_tb;
+module leland_sound_tb;
 
 // 48MHz -- the REAL clk_sys rate this design is built around (matches
-// sor_board_tb.sv's own convention), unlike every prior WP1-WP9 bench's
+// leland_board_tb.sv's own convention), unlike every prior WP1-WP9 bench's
 // deliberately uncalibrated "functional only" sim clock: this bench's
 // whole point is a real-time-accurate audio capture, so cycle counts
 // here really do mean real seconds (240,000,000 cycles = 5 real
@@ -59,7 +59,7 @@ wire signed [15:0] audio_out;
 
 reg ce_8m;
 
-sor_sound dut(
+leland_sound dut(
     .clk_sys(clk_sys), .reset(reset), .ce_8m(ce_8m),
     .sound_ctrl_data(sound_ctrl_data), .sound_ctrl_wr(sound_ctrl_wr),
     .cmd_wr_data(cmd_wr_data), .cmd_wr_lo(cmd_wr_lo), .cmd_wr_hi(cmd_wr_hi),
@@ -85,7 +85,7 @@ end
 
 // --- Flat 1MB ROM image (80186's own address space, 0x00000-0xFFFFF).
 // RAM window (0-0x1FFFF) and unpopulated ROM gaps are irrelevant here
-// (rom_req is only ever asserted for addr>=0x20000 by sor_sound.sv's
+// (rom_req is only ever asserted for addr>=0x20000 by leland_sound.sv's
 // own mem_is_ram decode) -- zero-initialized, real content loaded only
 // into the three populated 128KB windows, matching the MRA fix's own
 // derivation from leland.cpp's ROM_START(offroad). ---
@@ -184,7 +184,7 @@ end
 // content. `send_command` mirrors the real protocol's own
 // two-separate-OUT shape (command_lo and command_hi as two distinct
 // 1-cycle strobes with a real gap between them, not simultaneous --
-// see sor_master.sv's own io_cmd/io_snd_hi decode for the hardware
+// see leland_master.sv's own io_cmd/io_snd_hi decode for the hardware
 // timing this copies).
 task automatic send_command(input [7:0] lo, input [7:0] hi);
     begin
@@ -290,7 +290,7 @@ endtask
 initial begin
     if (!$value$plusargs("MAX_CYCLES=%d", MAX_CYCLES))
         MAX_CYCLES = 2_000_000;
-    pcm_fd = $fopen("sor_sound_tb.pcm", "wb");
+    pcm_fd = $fopen("leland_sound_tb.pcm", "wb");
     sample_div = 0;
 end
 
@@ -303,9 +303,9 @@ always @(posedge clk_sys) begin
             wav_sample_count <= wav_sample_count + 1;
         end
         if (cyc_count >= MAX_CYCLES) begin
-            $display("SOR_SOUND_TB DONE: cyc_count=%0d dac_write_count=%0d dac9_write_count=%0d wav_samples=%0d",
+            $display("LELAND_SOUND_TB DONE: cyc_count=%0d dac_write_count=%0d dac9_write_count=%0d wav_samples=%0d",
                        cyc_count, dac_write_count, dac9_write_count, wav_sample_count);
-            $display("SOR_SOUND_TB reloc=%h pacs=%h mpcs=%h t_control0=%h ext_window_valid=%b ext_window_base=%h",
+            $display("LELAND_SOUND_TB reloc=%h pacs=%h mpcs=%h t_control0=%h ext_window_valid=%b ext_window_base=%h",
                        dut.reloc_reg, dut.pacs_reg, dut.mpcs_reg, dut.t_control[0],
                        dut.ext_window_valid, dut.ext_window_base);
             $fclose(pcm_fd);
@@ -323,7 +323,7 @@ task automatic stitch_wav;
         data_bytes = wav_sample_count * 2;
         byte_rate  = WAV_SAMPLE_RATE_HZ * 2;
         riff_bytes = 36 + data_bytes;
-        wav_fd = $fopen("sor_sound_tb.wav", "wb");
+        wav_fd = $fopen("leland_sound_tb.wav", "wb");
         $fwrite(wav_fd, "RIFF");
         wav_u32(wav_fd, riff_bytes);
         $fwrite(wav_fd, "WAVE");
@@ -338,7 +338,7 @@ task automatic stitch_wav;
         $fwrite(wav_fd, "data");
         wav_u32(wav_fd, data_bytes);
 
-        rd_fd = $fopen("sor_sound_tb.pcm", "rb");
+        rd_fd = $fopen("leland_sound_tb.pcm", "rb");
         c = $fgetc(rd_fd);
         while (c != -1) begin
             $fwrite(wav_fd, "%c", c[7:0]);
@@ -346,7 +346,7 @@ task automatic stitch_wav;
         end
         $fclose(rd_fd);
         $fclose(wav_fd);
-        $display("WAV written: sor_sound_tb.wav (%0d samples @ %0d Hz nominal)",
+        $display("WAV written: leland_sound_tb.wav (%0d samples @ %0d Hz nominal)",
                    wav_sample_count, WAV_SAMPLE_RATE_HZ);
     end
 endtask
@@ -359,7 +359,7 @@ endtask
 // fixed here so a future larger MAX_CYCLES doesn't repeat it.
 initial begin
     #(CLK_PERIOD * (MAX_CYCLES + MAX_CYCLES/5 + 100_000));
-    $display("SOR_SOUND_TB TIMEOUT: only cyc_count=%0d retired", cyc_count);
+    $display("LELAND_SOUND_TB TIMEOUT: only cyc_count=%0d retired", cyc_count);
     $fclose(pcm_fd);
     stitch_wav();
     $finish;

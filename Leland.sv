@@ -1,5 +1,5 @@
 //============================================================================
-//  Super Off Road — MiSTer FPGA Core
+//  Leland - MiSTer FPGA Core
 //  Leland / Tradewest 1989
 //
 //  Copyright (C) 2026 shimian5
@@ -28,8 +28,8 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-// SDRAM pins are driven by sor_board. The DDR3 port is shared by sor_ddr_loader and
-// sor_retimer (see the DDR3 mux below).
+// SDRAM pins are driven by leland_board. The DDR3 port is shared by leland_ddr_loader and
+// leland_retimer (see the DDR3 mux below).
 
 assign VGA_SL       = 0;
 assign VGA_F1       = 0;
@@ -60,7 +60,7 @@ assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 
 `include "build_id.v"
 localparam CONF_STR = {
-	"SuperOffRoad;;",
+	"Leland;;",
 	"-;",
 	// Video settings live on their own page.
 	"P1,Video Settings;",
@@ -103,7 +103,7 @@ wire [15:0] ioctl_index;
 wire        ioctl_wr;
 wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
-// ioctl_wait comes from sor_ddr_loader (which passes through sor_board's
+// ioctl_wait comes from leland_ddr_loader (which passes through leland_board's
 // stall, see board_wait below) -- stalls HPS during SDRAM writes / init
 wire        ioctl_wait;
 
@@ -176,7 +176,7 @@ pll pll
 
 //----------------------------------------------------------------
 // Fast ROM loading: an MRA <rom index="0" address="0x30000000"> makes the
-// HPS copy the ROM straight into DDR3; sor_ddr_loader then replays it to
+// HPS copy the ROM straight into DDR3; leland_ddr_loader then replays it to
 // the board as a normal download (or passes a streamed ROM through).
 //----------------------------------------------------------------
 wire        ld_download, ld_wr, ld_active;
@@ -188,7 +188,7 @@ wire        board_wait;
 wire        ld_acq, ld_ddr_read;
 wire [28:0] ld_ddr_addr;
 
-sor_ddr_loader ddr_loader
+leland_ddr_loader ddr_loader
 (
 	.clk(clk_sys),
 
@@ -229,8 +229,8 @@ wire signed [15:0] audio_out; // mono, from the sound board's DAC mixer
 
 //----------------------------------------------------------------
 // Steering: analog stick, d-pad and spinner are combined into the free-running virtual
-// dial that sor_board's p*_wheel ports expect (the real wheel is a free-spinning
-// encoder, see sor_master.sv).
+// dial that leland_board's p*_wheel ports expect (the real wheel is a free-spinning
+// encoder, see leland_master.sv).
 //----------------------------------------------------------------
 reg vblank_d;
 always @(posedge clk_sys) vblank_d <= VBlank;
@@ -275,7 +275,7 @@ wire [7:0] p2_gas = joy2[6] ? 8'hFF : 8'h00;
 wire [7:0] p3_gas = joy3[6] ? 8'hFF : 8'h00;
 
 // 4-player digital joystick for Pig Out: MiSTer's standard joystick vector low byte
-// already matches sor_board's p*_joy layout ([0]=right [1]=left [2]=down [3]=up
+// already matches leland_board's p*_joy layout ([0]=right [1]=left [2]=down [3]=up
 // [4]=btn1 [5]=btn2), with the two spare fire bits used as start and coin.
 wire [7:0] p1_joy = joy1[7:0];
 wire [7:0] p2_joy = joy2[7:0];
@@ -312,7 +312,7 @@ wire p3_nitro  = joy3[4] | svc_req | joy1[7];
 //----------------------------------------------------------------
 // Board
 //----------------------------------------------------------------
-sor_board board
+leland_board board
 (
 	.clk_sys(clk_sys),
 	.clk_sdram(clk_sdram),
@@ -379,7 +379,7 @@ sor_board board
 //----------------------------------------------------------------
 // Video output to MiSTer framework
 //----------------------------------------------------------------
-// CRT retimer (rtl/sor_retimer.sv): by default the output is regenerated at NTSC 240p
+// CRT retimer (rtl/leland_retimer.sv): by default the output is regenerated at NTSC 240p
 // (15.73 kHz / 60.03 Hz) from a frame buffer while the game keeps running at its native
 // 65.95 Hz. With Video Timing set to Native the game's own timing goes straight to the
 // framework.
@@ -389,7 +389,7 @@ wire [28:0] rt_ddr_addr;
 wire [63:0] rt_ddr_din;
 wire        rt_ddr_rd, rt_ddr_we;
 
-sor_retimer retimer
+leland_retimer retimer
 (
 	.clk_sys(clk_sys),
 	// keep off the shared DDR3 bus while a ROM is downloading / replaying

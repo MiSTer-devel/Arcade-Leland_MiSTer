@@ -1,4 +1,4 @@
-## Super Off Road — MiSTer FPGA Core
+## Leland - MiSTer FPGA Core
 ## Source file list for Quartus
 ## Do NOT edit in Quartus IDE — add files here manually.
 
@@ -12,32 +12,25 @@ set_global_assignment -name VERILOG_FILE rtl/tv80/rtl/core/tv80_core.v
 set_global_assignment -name VERILOG_FILE rtl/tv80s_ce.v
 
 ## ── Core RTL ─────────────────────────────────────────────────────────
-set_global_assignment -name SYSTEMVERILOG_FILE SuperOffRoad.sv
+set_global_assignment -name SYSTEMVERILOG_FILE Leland.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/steering_input.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_vram_port.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_board.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_master.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_slave.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_video.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_retimer.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_ddr_loader.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_dpram.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_eeprom_93c46.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_vram_port.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_board.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_master.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_slave.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_video.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_retimer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_ddr_loader.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_dpram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_eeprom_93c46.sv
 
-## ── Chunk 3 additions (Slave Z80 + real video) ─────────────────────
-## Uncomment when ready:
-## set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_tile_renderer.sv
 
-## ── WP10 (docs/planning_80186_sound.md): S80186 sound board ─────────
-## Real chain: vendored s80x86 core (rtl/s80x86, GPLv3, see its own
-## README_VENDORING.md) + i186_periph (WP2-4,8) + KF8253 PIT8254
-## (rtl/KF8253, MIT) + leland_sound_board (WP6) + leland_dac_mixer
-## (WP7), bundled by rtl/sor_sound.sv. File order matches
-## sim/s80x86_core_filelist.f (config.v's `define must precede Flags.sv,
-## which reads it directly with no `include -- Verilog macro visibility
-## is whole-project/file-order-dependent, same reasoning as ModelSim's
-## -mfcu requirement documented in docs/WP1_PROGRESS.md).
+## ── Sound board ─────────────────────────────────────────────────────
+## Vendored s80x86 core (rtl/s80x86, GPLv3, see its README_VENDORING.md), i186_periph,
+## KF8253 PIT8254 (rtl/KF8253, MIT), leland_sound_board and leland_dac_mixer, bundled
+## by rtl/leland_sound.sv. config.v's `define must precede Flags.sv, which reads it
+## with no `include, so file order matters.
 set_global_assignment -name SEARCH_PATH rtl/KF8253
 set_global_assignment -name SEARCH_PATH rtl/s80x86/microcode
 set_global_assignment -name VERILOG_FILE rtl/s80x86/config.v
@@ -101,6 +94,6 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/KF8253/kf8253_leland_bus.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/i186_periph.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_sound_board.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_dac_mixer.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sor_sound.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_sound.sv
 
-set_global_assignment -name SDC_FILE SuperOffRoad.sdc
+set_global_assignment -name SDC_FILE Leland.sdc

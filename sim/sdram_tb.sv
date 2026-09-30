@@ -10,7 +10,7 @@
 //
 //  What it checks, in order:
 //    1. Isolated single-byte write/readback (mirrors the on-hardware
-//       byte-test diagnostic added to sor_board.sv).
+//       byte-test diagnostic added to leland_board.sv).
 //    2. A representative range of bytes written sequentially (mirrors how
 //       HPS streams ROM data byte-by-byte), then read back two ways:
 //         a. via rd0, in the same sequential order the CPU would use
@@ -61,7 +61,7 @@ reg  [24:0] rd1_addr; reg        rd1_req;  wire [7:0] rd1_data; wire rd1_ack;
 reg  [24:0] rd2_addr; reg        rd2_req;  wire [7:0] rd2_data; wire rd2_ack;
 
 // Explicit periodic refresh trigger (matches upstream's `refresh` port
-// and sor_board.sv's real timer) — same < 7.8us pacing.
+// and leland_board.sv's real timer) — same < 7.8us pacing.
 localparam REFRESH_CYCLES = 14'd370;
 reg [13:0] refresh_cnt = 14'd0;
 reg        refresh_req;
@@ -132,7 +132,7 @@ task check_byte(input [24:0] addr, input [7:0] expected, input [7:0] actual, inp
 endtask
 
 //------------------------------------------------------------------
-// Level-req / pulse-ack driver tasks (match sor_board.sv's protocol)
+// Level-req / pulse-ack driver tasks (match leland_board.sv's protocol)
 //------------------------------------------------------------------
 task sdram_write(input [24:0] addr, input [7:0] data);
 	begin

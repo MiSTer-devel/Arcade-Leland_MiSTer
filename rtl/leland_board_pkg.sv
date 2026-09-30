@@ -76,14 +76,14 @@ package leland_board_pkg;
 	localparam logic [26:0] GFX_MAX          = 27'h200000; // 2 MB reserved
 
 	// Derived copy of bg_gfx planes 0+1 interleaved into 16-bit words (word i =
-	// {plane1[i], plane0[i]}), built once at boot by the repack FSM in sor_board.sv from
+	// {plane1[i], plane0[i]}), built once at boot by the repack FSM in leland_board.sv from
 	// the untouched ADDR_GFX_BASE content. It sits after the 3 raw planes (0x18000 bytes)
 	// inside GFX_BASE's reservation.
 	localparam logic [26:0] ADDR_GFXW_BASE   = ADDR_GFX_BASE + 27'h018000;
 
 	// Derived copy holding all 3 planes of a tile row in one 4-byte, burst-friendly entry:
 	// word0 = {plane1[i], plane0[i]}, word1 = {8'h00, plane2[i]}, with the same index
-	// i = tile_code*8 + riy as ADDR_GFXW_BASE. sor_video reads it with one 2-word burst.
+	// i = tile_code*8 + riy as ADDR_GFXW_BASE. leland_video reads it with one 2-word burst.
 	// Built by the same repack FSM; 4 * 0x8000 = 0x20000 bytes, right after
 	// ADDR_GFXW_BASE's region.
 	localparam logic [26:0] ADDR_GFXROW_BASE = ADDR_GFXW_BASE + 27'h010000;

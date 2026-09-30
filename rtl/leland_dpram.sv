@@ -6,7 +6,7 @@
 //  Used for: Video RAM (128 KB), Color RAM (1 KB), work RAM, etc.
 //============================================================================
 
-module sor_dpram #(
+module leland_dpram #(
 	parameter ADDR_WIDTH = 17,
 	parameter DATA_WIDTH = 8
 )(

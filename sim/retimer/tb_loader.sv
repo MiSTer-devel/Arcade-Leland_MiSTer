@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// Testbench for rtl/sor_ddr_loader.sv
+// Testbench for rtl/leland_ddr_loader.sv
 //  1. DDR load: image staged in a DDR3 model, download ends with no bytes and
 //     ioctl_addr = length (odd length, not a multiple of 8). The replay must
 //     produce exactly the image, in order, with o_addr = byte offset, honouring
@@ -28,7 +28,7 @@ reg        ddr_busy = 0;
 reg [63:0] ddr_rdata = 0;
 reg        ddr_rdv = 0;
 
-sor_ddr_loader dut(.clk(clk),
+leland_ddr_loader dut(.clk(clk),
 	.ioctl_download(ioctl_download), .ioctl_index(ioctl_index), .ioctl_addr(ioctl_addr),
 	.ioctl_wr(ioctl_wr), .ioctl_data(ioctl_data), .ioctl_wait(ioctl_wait),
 	.o_download(o_download), .o_index(o_index), .o_addr(o_addr), .o_wr(o_wr), .o_data(o_data),

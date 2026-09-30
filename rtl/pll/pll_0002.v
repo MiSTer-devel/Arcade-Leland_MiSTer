@@ -44,7 +44,7 @@ module  pll_0002(
 	// revert. Back to the single, proven-on-real-hardware-with-sound
 	// 48 MHz outclk_0 (clk_sys) + phase-shifted outclk_1 (SDRAM_CLK)
 	// scheme below; the actual bandwidth fix for WP-L2's added gfx/prom
-	// traffic is instead a rtl/sor_video.sv change (stop wasting rd2
+	// traffic is instead a rtl/leland_video.sv change (stop wasting rd2
 	// fetches on off-screen VBlank tiles), applied on top of this
 	// simpler, lower-risk baseline.
 	altera_pll #(

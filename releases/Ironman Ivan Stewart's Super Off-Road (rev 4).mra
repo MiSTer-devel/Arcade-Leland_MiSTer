@@ -5,7 +5,7 @@
 	<year>1989</year>
 	<manufacturer>Leland / Tradewest</manufacturer>
 	<category>Driving</category>
-	<rbf>SuperOffRoad</rbf>
+	<rbf>Leland</rbf>
 
 	<rom index="0" address="0x30000000" zip="offroad.zip" md5="None" type="merged">
 		<part>4C 01 03 00 00 01 00 00 00 00 00 00 00 00 00 00</part>
@@ -59,7 +59,7 @@
 
 	<!--
 	  Per-game button labels. The core's "J1,Nitro,Coin,Gas,Start" string in
-	  SuperOffRoad.sv is shared by all three games this RBF serves. This game is
+	  Leland.sv is shared by all three games this RBF serves. This game is
 	  WHEELS3_PEDALS3: Nitro/Coin/Gas are J1 bits 4/5/6. Bit 7 ("Menu Enter")
 	  acts as the Blue Nitro button, used to choose items in the operator menu
 	  (manual, p.17: Red Nitro selects, Blue Nitro enters). The menu itself is

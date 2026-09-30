@@ -2,16 +2,16 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road -- fast ROM loading via DDR3
+//  Leland - fast ROM loading via DDR3
 //
 //  The MRA's <rom index="0" address="0x30000000" ...> makes Main_MiSTer copy
 //  the whole ROM image straight into HPS DDR3 at byte address 0x30000000 (fast,
 //  no per-byte handshake), then end the download with NO ioctl_wr strobes and
 //  ioctl_addr = image length. This module notices that, reads the image back
-//  from DDR3 64 bits at a time, and REPLAYS it to sor_board as an ordinary
+//  from DDR3 64 bits at a time, and REPLAYS it to leland_board as an ordinary
 //  download (ioctl_download / ioctl_index / ioctl_addr / ioctl_wr / ioctl_data),
 //  at the board's own pace (it honours the board's ioctl_wait FIFO stall).
-//  sor_board therefore needs no changes: it sees the same byte stream it
+//  leland_board therefore needs no changes: it sees the same byte stream it
 //  always has, just without the HPS on the other end of the handshake.
 //
 //  Anything that is NOT a DDR load (a normally streamed ROM, DIP/other
@@ -24,7 +24,7 @@
 //  ioctl_download) to keep the frame retimer off the shared DDR3 bus.
 //============================================================================
 
-module sor_ddr_loader
+module leland_ddr_loader
 #(
 	parameter [28:0] DDR_BASE_WORD = 29'h06000000 // byte 0x30000000 >> 3
 )
@@ -39,13 +39,13 @@ module sor_ddr_loader
 	input       [7:0] ioctl_data,
 	output            ioctl_wait,      // back to hps_io
 
-	// To sor_board
+	// To leland_board
 	output            o_download,
 	output     [15:0] o_index,
 	output     [26:0] o_addr,
 	output            o_wr,
 	output      [7:0] o_data,
-	input             b_wait,          // sor_board's ioctl_wait
+	input             b_wait,          // leland_board's ioctl_wait
 
 	// Replay in progress (including start-up delay)
 	output            active,

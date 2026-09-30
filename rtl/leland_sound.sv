@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 shimian5
 
-// sor_sound -- the whole 80186 sound-board chain in one module for sor_board to
+// leland_sound -- the whole 80186 sound-board chain in one module for leland_board to
 // instantiate. It owns:
 //   - the vendored s80x86 core, run at the full clk_sys rate (no PLL/CDC, no core patch;
 //     only the internal timer tick is re-paced through ce_8m)
@@ -16,7 +16,7 @@
 // Reference: MAME leland_a.cpp leland_80186_map_program (RAM 0x00000-0x1FFFF mirrored,
 // ROM 0x20000-0xFFFFF identity-mapped into the audiocpu region).
 
-module sor_sound(
+module leland_sound(
 	input  logic        clk_sys,   // 48 MHz
 	input  logic        reset,     // board reset
 	input  logic        ce_8m,     // ~8MHz-equivalent CE -- paces ONLY
@@ -25,15 +25,15 @@ module sor_sound(
 									// other signal in this chain runs
 									// un-gated at clk_sys (see file header)
 
-	// --- Master-Z80-side control/command latch (sor_master.sv) ---
+	// --- Master-Z80-side control/command latch (leland_master.sv) ---
 	input  logic [7:0]  sound_ctrl_data,
 	input  logic         sound_ctrl_wr,
 	input  logic [15:0] cmd_wr_data,
 	input  logic         cmd_wr_lo, cmd_wr_hi,
 	output logic [7:0]  response_data,
 
-	// --- SDRAM read port (sound ROM), same shape as sor_master/
-	//     sor_slave's own rom_req/rom_addr/rom_data/rom_stall ---
+	// --- SDRAM read port (sound ROM), same shape as leland_master/
+	//     leland_slave's own rom_req/rom_addr/rom_data/rom_stall ---
 	output logic         rom_req,
 	output logic [19:0] rom_addr,   // byte address, 0-0xFFFFF (80186's own address space)
 	input  logic [7:0]  rom_data,
@@ -343,7 +343,7 @@ end
 
 // --- ROM (byte-wide SDRAM adapter): fetches both bytes of the containing word for every
 // access (regardless of bytesel) and presents a full 16-bit word once both arrive. There
-// is a one-cycle req-low gap between the two byte requests, as sor_board's SDRAM
+// is a one-cycle req-low gap between the two byte requests, as leland_board's SDRAM
 // arbiter requires (clients deassert req for >= 1 cycle after ack).
 localparam ROM_IDLE = 3'd0, ROM_LO = 3'd1, ROM_GAP = 3'd2, ROM_HI = 3'd3, ROM_DONE = 3'd4;
 reg [2:0]  rom_phase;

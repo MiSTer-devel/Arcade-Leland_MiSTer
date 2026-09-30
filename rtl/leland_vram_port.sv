@@ -2,7 +2,7 @@
 // Copyright (C) 2026 shimian5
 
 //============================================================================
-//  Super Off Road — Leland CPU-side VRAM I/O port engine
+//  Leland - Leland CPU-side VRAM I/O port engine
 //
 //  One instance per CPU. Implements MAME leland_v.cpp exactly:
 //    - video_addr_w   (memory-mapped address latch, 0xF800/0xF801)
@@ -34,14 +34,14 @@
 //
 //  The engine performs all address/latch math locally and emits
 //  elementary BRAM operations (1 or 2 per Z80 I/O cycle) through a
-//  2-deep queue; sor_board's sequencer executes them against the single
+//  2-deep queue; leland_board's sequencer executes them against the single
 //  CPU-side VRAM BRAM port and returns read data via vp_pop/vp_rdata.
 //
 //  A new I/O cycle is never dropped: vp_stall holds the parent's Z80 /WAIT for as long as
 //  the queue cannot accept the op (the same convention as the SDRAM rom_stall).
 //============================================================================
 
-module sor_vram_port #(parameter bit TRANS_EN = 1'b0)
+module leland_vram_port #(parameter bit TRANS_EN = 1'b0)
 (
 	input         clk_sys,
 	input         reset,
@@ -63,7 +63,7 @@ module sor_vram_port #(parameter bit TRANS_EN = 1'b0)
 	// wait_n.
 	output        vp_stall,
 
-	// elementary op stream to sor_board's VRAM sequencer (head of queue)
+	// elementary op stream to leland_board's VRAM sequencer (head of queue)
 	output        vp_req,       // op pending
 	output        vp_rd,        // 1 = read op, 0 = write op
 	output        vp_trans,     // transparent write (RMW nibble merge)
