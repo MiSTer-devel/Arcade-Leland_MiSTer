@@ -12,6 +12,8 @@ set_global_assignment -name VERILOG_FILE rtl/tv80/rtl/core/tv80_core.v
 set_global_assignment -name VERILOG_FILE rtl/cpu/tv80s_ce.v
 
 ## ── Core RTL ─────────────────────────────────────────────────────────
+## leland_board_pkg is imported by the modules below, so it comes first.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_board_pkg.sv
 set_global_assignment -name SYSTEMVERILOG_FILE Leland.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/io/steering_input.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/sdram.sv
