@@ -1,6 +1,6 @@
 //============================================================================
 //  Leland - MiSTer FPGA Core
-//  Leland / Tradewest 1989
+//  Leland Corp. 1989
 //
 //  Copyright (C) 2026 shimian5
 //

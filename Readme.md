@@ -1,8 +1,8 @@
 # Leland - MiSTer FPGA Core
 
-MiSTer core for Leland Corporation / Tradewest arcade games: twin Z80
-master/slave boards, tile and sprite video, and the 80186-based sound board,
-all in RTL.
+MiSTer core for the Cinematronics / Leland Cinemat System arcade hardware, as
+used by Leland Corp. games: twin Z80 master/slave boards, tile and sprite video,
+and the 80186-based sound board, all in RTL.
 
 ## Supported games
 
