@@ -40,8 +40,14 @@ module leland_board #(
 	input   [7:0] ioctl_data,
 	output        ioctl_wait, // stall HPS while SDRAM write is in progress
 
-	// EEPROM save file (MRA <nvram index="4">): restored from the ioctl stream above
-	// (ioctl_index 4), saved through the read port below
+	// EEPROM save file (MRA <nvram index="4">). The restore stream is hps_io's own
+	// ioctl_* (nvl_*), not the ones above: leland_ddr_loader replaces those while it
+	// replays the ROM from DDR3, which is exactly when the save file arrives.
+	input         nvl_download,
+	input  [15:0] nvl_index,
+	input         nvl_wr,
+	input  [26:0] nvl_addr,
+	input   [7:0] nvl_data,
 	input   [6:0] nv_rd_addr,
 	output  [7:0] nv_rd_data,
 	output        nv_dirty,
@@ -842,7 +848,10 @@ end
 // been seen the default load stops writing, and the save file always wins.
 localparam [15:0] NVRAM_INDEX = 16'd4;
 
-wire       ioctl_wr_nv = ioctl_wr && ioctl_download && (ioctl_index == NVRAM_INDEX);
+reg [26:0] nvl_addr_d1;
+always @(posedge clk_sys) nvl_addr_d1 <= nvl_addr;
+
+wire       ioctl_wr_nv = nvl_wr && nvl_download && (nvl_index == NVRAM_INDEX);
 reg        nv_seen;
 reg  [7:0] nv_hi;
 reg        nv_mem_wr_r;
@@ -852,15 +861,15 @@ reg [15:0] nv_mem_wr_data_r;
 always @(posedge clk_sys) begin
 	nv_mem_wr_r <= 1'b0;
 	if (sdram_init) nv_seen <= 1'b0;
-	else if (ioctl_download && (ioctl_index == NVRAM_INDEX)) nv_seen <= 1'b1;
+	else if (nvl_download && (nvl_index == NVRAM_INDEX)) nv_seen <= 1'b1;
 
-	if (ioctl_wr_nv && (ioctl_addr_d1 < 27'd128)) begin
-		if (!ioctl_addr_d1[0]) begin
-			nv_hi <= ioctl_data;
+	if (ioctl_wr_nv && (nvl_addr_d1 < 27'd128)) begin
+		if (!nvl_addr_d1[0]) begin
+			nv_hi <= nvl_data;
 		end else begin
 			nv_mem_wr_r      <= 1'b1;
-			nv_mem_wr_addr_r <= ioctl_addr_d1[6:1];
-			nv_mem_wr_data_r <= {nv_hi, ioctl_data};
+			nv_mem_wr_addr_r <= nvl_addr_d1[6:1];
+			nv_mem_wr_data_r <= {nv_hi, nvl_data};
 		end
 	end
 end

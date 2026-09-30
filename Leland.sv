@@ -342,7 +342,13 @@ leland_board board
 	.ioctl_data(ld_data),
 	.ioctl_wait(board_wait),
 
-	// EEPROM save
+	// EEPROM save: restore stream comes straight from hps_io (the DDR loader
+	// replaces ld_* while it replays the ROM)
+	.nvl_download(ioctl_download),
+	.nvl_index(ioctl_index),
+	.nvl_wr(ioctl_wr),
+	.nvl_addr(ioctl_addr),
+	.nvl_data(ioctl_dout),
 	.nv_rd_addr(ioctl_addr[6:0]),
 	.nv_rd_data(nv_rd_data),
 	.nv_dirty(nv_dirty),
