@@ -55,6 +55,12 @@ Enter** acts as Blue Nitro (P3 Nitro), so one controller can select with Nitro
 and enter with Menu Enter. Lives and difficulty are set here; the hardware has
 no DIP switches.
 
+## Known issues
+
+- The first **Service Menu** selection after loading the core does not open the menu in
+  any of the three games. Later attempts work. It looks like a timing race, and a second
+  selection is the workaround.
+
 ## Installing
 
 Copy to your MiSTer:
