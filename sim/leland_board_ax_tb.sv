@@ -6,6 +6,9 @@
 
 `timescale 1ns / 1ps
 
+`ifndef FRAME_EVERY
+  `define FRAME_EVERY 60
+`endif
 `ifndef FETCH_LOG
   `define FETCH_LOG 0
 `endif
@@ -27,6 +30,8 @@ initial begin
 	forever #(CLK_PERIOD/2) clk_sdram = ~clk_sdram;
 end
 
+reg [7:0] p1_joy_r = 8'h00;
+reg [7:0] p1_wx = 8'h00, p1_wy = 8'h00;
 reg reset          = 1;
 reg sdram_init     = 1;
 reg ioctl_download = 0;
@@ -73,9 +78,9 @@ leland_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 
 	.p1_btn(4'h0), .p2_btn(4'h0), .p3_btn(4'h0),
 	.p1_wheel(8'h00), .p2_wheel(8'h00), .p3_wheel(8'h00),
-	.p1_wheel_y(8'h00), .p2_wheel_y(8'h00),
+	.p1_tb_x(p1_wx), .p1_tb_y(p1_wy), .p2_tb_x(8'h00), .p2_tb_y(8'h00),
 	.p1_pedal(8'h00), .p2_pedal(8'h00), .p3_pedal(8'h00),
-	.p1_joy(8'h00), .p2_joy(8'h00), .p3_joy(8'h00), .p4_joy(8'h00),
+	.p1_joy(p1_joy_r), .p2_joy(8'h00), .p3_joy(8'h00), .p4_joy(8'h00),
 
 	.service(1'b0),
 	.audio_out(audio_out)
@@ -87,6 +92,46 @@ mt48lc16m16a2 chip
 	.Cs_n(SDRAM_nCS), .Ras_n(SDRAM_nRAS), .Cas_n(SDRAM_nCAS), .We_n(SDRAM_nWE),
 	.Dqm({SDRAM_DQMH, SDRAM_DQML})
 );
+
+// Input stimulus (times in ms after the CPUs start; 0 disables): coin pulse, start pulse,
+// then trackball movement of +4 counts per frame on X and Y for 40 frames.
+`ifndef COIN_AT_MS
+  `define COIN_AT_MS 0
+`endif
+`ifndef START_AT_MS
+  `define START_AT_MS 0
+`endif
+`ifndef MOVE_AT_MS
+  `define MOVE_AT_MS 0
+`endif
+integer mv;
+initial begin
+	wait (reset == 1'b0);
+	if (`COIN_AT_MS != 0) begin
+		#(`COIN_AT_MS * 64'd1_000_000) p1_joy_r[7] = 1'b1;
+		#(170 * 64'd1_000_000)         p1_joy_r[7] = 1'b0;
+	end
+end
+initial begin
+	wait (reset == 1'b0);
+	if (`START_AT_MS != 0) begin
+		#(`START_AT_MS * 64'd1_000_000) p1_joy_r[6] = 1'b1;
+		#(170 * 64'd1_000_000)          p1_joy_r[6] = 1'b0;
+	end
+end
+initial begin
+	wait (reset == 1'b0);
+	if (`MOVE_AT_MS != 0) begin
+		#(`MOVE_AT_MS * 64'd1_000_000);
+		for (mv = 0; mv < 40; mv = mv + 1) begin
+			p1_wx = p1_wx + 8'd4;
+			p1_wy = p1_wy + 8'd4;
+			#(15_170_000);
+		end
+	end
+end
+
+always @(p1_joy_r) $display("JOY t=%0t p1_joy_r=%02x in0=%02x", $time, p1_joy_r, dut.master_ax.in0);
 
 reg [7:0] img [0:IMG_LEN-1];
 integer fd, rd_count, k;
@@ -166,7 +211,7 @@ always @(posedge clk_sys) if (ce_pix && !reset) begin
 		if (!VBlank) fy <= fy + 1;
 	end
 	if (VBlank && !vb_d) begin
-		if (frame_no % 60 == 59) begin
+		if (frame_no % `FRAME_EVERY == `FRAME_EVERY - 1) begin
 			ffd = $fopen($sformatf("frame_ax_%0d.ppm", frame_no + 1), "wb");
 			$fwrite(ffd, "P6\n320 240\n255\n");
 			for (fi = 0; fi < 320*240; fi = fi + 1)
@@ -177,6 +222,14 @@ always @(posedge clk_sys) if (ce_pix && !reset) begin
 		fy <= 0;
 		fx <= 0;
 	end
+end
+
+// Video fetch starvation watchdog: rd2 request outstanding for > 5000 cycles
+integer rd2_wait = 0;
+always @(posedge clk_sys) begin
+	if (dut.sdram_rd2_req_v && !dut.sdram_rd2_ack) rd2_wait <= rd2_wait + 1;
+	else                                           rd2_wait <= 0;
+	if (rd2_wait == 5000) $display("RD2_STALL t=%0t fetch_ph=%0d", $time, dut.video.fetch_ph);
 end
 
 reg [15:0] m_pc, s_pc;
@@ -196,6 +249,7 @@ always @(posedge clk_sys)
 integer mwr = 0, mrd = 0;
 reg [7:0] last_rd_port = 8'hzz;
 reg [15:0] last_rd_pc = 16'hzzzz;
+reg [7:0] last_rd_data = 8'hzz;
 reg wr_logged = 1'b0;
 always @(posedge clk_sys) begin
 	if (!dut.master_ax.io_wr) wr_logged <= 1'b0;
@@ -206,12 +260,13 @@ always @(posedge clk_sys) begin
 		         dut.master_ax.cpu_dout, m_pc);
 	end
 	if (!reset && dut.master_ax.CE_6M && dut.master_ax.io_rd &&
-	    (dut.master_ax.cpu_addr[7:0] != last_rd_port || m_pc != last_rd_pc)) begin
+	    (dut.master_ax.cpu_addr[7:0] != last_rd_port || m_pc != last_rd_pc || dut.master_ax.cpu_din != last_rd_data)) begin
 		mrd = mrd + 1;
 		$display("MIORD #%0d port=%02x data=%02x pc=%04x", mrd, dut.master_ax.cpu_addr[7:0],
 		         dut.master_ax.cpu_din, m_pc);
 		last_rd_port = dut.master_ax.cpu_addr[7:0];
 		last_rd_pc   = m_pc;
+		last_rd_data = dut.master_ax.cpu_din;
 	end
 end
 

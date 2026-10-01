@@ -83,8 +83,8 @@ module leland_board #(
 	// IPT_PEDAL AN0/AN1/AN2 do.
 	input   [7:0] p1_pedal, p2_pedal, p3_pedal,
 
-	// Trackball Y axes for Ataxx (X uses p1_wheel/p2_wheel)
-	input   [7:0] p1_wheel_y, p2_wheel_y,
+	// Ataxx trackballs (free-running mod-256 positions, see trackball_input.sv)
+	input   [7:0] p1_tb_x, p1_tb_y, p2_tb_x, p2_tb_y,
 
 	// 4-player digital joystick, used only when the active game's
 	// input_scheme is JOY4_DIGITAL (pigout) -- unconsumed for WHEELS3_
@@ -1516,8 +1516,8 @@ leland_master_ataxx master_ax
 	.cmd_wr_hi(sound_cmd_wr_hi_a),
 	.response_data(sound_response_data),
 
-	.p1_x(p1_wheel), .p1_y(p1_wheel_y),
-	.p2_x(p2_wheel), .p2_y(p2_wheel_y),
+	.p1_x(p1_tb_x), .p1_y(p1_tb_y),
+	.p2_x(p2_tb_x), .p2_y(p2_tb_y),
 	.p1_joy(p1_joy), .p2_joy(p2_joy),
 	.service(service)
 );
