@@ -28,7 +28,7 @@ module trackball_input
 
 	wire        [7:0] mag = analog[7] ? (8'd0 - analog) : analog;
 	wire        [7:0] over = (mag > DEADZONE) ? (mag - DEADZONE) : 8'd0;
-	wire signed [8:0] scaled = {1'b0, over[7:4]} + 9'sd0; // 0..6 counts per frame
+	wire signed [8:0] scaled = {1'b0, over[7:4]}; // 0..6 counts per frame
 	wire signed [8:0] analog_term = analog[7] ? -scaled : scaled;
 
 	reg       spinner_toggle_d;

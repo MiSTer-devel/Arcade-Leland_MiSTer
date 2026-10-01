@@ -94,7 +94,7 @@ wire [3:0] bank = bank_reg[3:0];
 wire bank_raw = (bank == 4'd0) || (bank > 4'd5);
 
 assign rom_addr = (in_banked & ~bank_raw) ? {bank[2:0], bank_reg[4], cpu_addr[14:0]}
-                                          : {3'b0, cpu_addr};
+	: {3'b0, cpu_addr};
 
 assign wram_addr = cpu_addr[11:0];
 assign wram_din  = cpu_dout;

@@ -152,7 +152,7 @@ assign rom_req = mem_access & ~rd_n & (in_fixed | in_banked | in_high_rom);
 // out-of-range banks map the window straight onto the raw image.
 wire bank_raw = (master_bank[3:0] == 4'd0) || (master_bank[3:2] != 2'd0);
 assign rom_addr = (in_banked & ~bank_raw) ? {1'b0, master_bank[1:0], cpu_addr[14:0]} :
-                                            {2'b0, cpu_addr};
+	{2'b0, cpu_addr};
 
 // RAM
 assign wram_addr = cpu_addr[12:0];
@@ -271,7 +271,7 @@ wire io_f0    = (cpu_addr[7:4] == 4'hF);
 wire [3:0] f_off = cpu_addr[3:0];
 
 wire [7:0] in0 = {~p2_joy[4], ~p2_joy[6], ~p1_joy[4], ~p1_joy[6],
-                  ~service, 1'b1, ~p2_joy[7], ~p1_joy[7]};
+	~service, 1'b1, ~p2_joy[7], ~p1_joy[7]};
 wire [7:0] in1 = {6'h3F, ~vblank, ~slave_halt_n};
 
 // Writes
