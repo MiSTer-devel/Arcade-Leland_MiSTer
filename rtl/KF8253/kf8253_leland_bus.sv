@@ -62,7 +62,7 @@ KF8253 u_kf8253(
 typedef enum logic [2:0] {S_IDLE, S_WR0, S_WR1, S_RD0, S_WAIT} state_t;
 state_t state;
 
-wire [7:0] wr_byte = bytesel[1] ? data_in[15:8] : data_in[7:0];
+wire [7:0] wr_byte = (bytesel == 2'b10) ? data_in[15:8] : data_in[7:0];
 
 always_ff @(posedge clk or posedge reset) begin
     if (reset) begin
