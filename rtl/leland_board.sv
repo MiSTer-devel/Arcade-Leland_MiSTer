@@ -1772,6 +1772,7 @@ rom_line_cache #(
 leland_sound sound(
 	.clk_sys(clk_sys),
 	.reset(reset | ~cpu_release),
+	.ataxx_mode(ataxx_sel),
 	.ce_8m(CE_8M),
 
 	.sound_ctrl_data(sound_ctrl_data),

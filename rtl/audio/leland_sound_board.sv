@@ -60,6 +60,11 @@ module leland_sound_board(
 	// --- PIT0/PIT1 counter clock enable (4 MHz; all six counters share it) ---
 	input  logic         pit_ce,
 
+	// Ataxx sound board variant (leland_a.cpp ATAXX_80186): peripherals sit in an I/O-space
+	// window (not memory), there is no whole-I/O-space DAC port and no second PIT, and the
+	// three DACs plus their volumes are written through PCS select 5.
+	input  logic         ataxx_mode,
+
 	// --- Z80-facing command/response/control seam ---
 	input  logic [15:0] cmd_wr_data,
 	input  logic         cmd_wr_lo, cmd_wr_hi,   // 1-cycle strobes (command_lo_w/command_hi_w)
@@ -97,7 +102,8 @@ wire [19:1] window_top_word  = window_base_word + 19'h180; // 0x300 bytes = 0x18
 // access must depend only on address/d_io, never on the access/ack handshake; only
 // real bus-activity signals (`mem_access`, `pit0_access`, `do_write`, ...) may AND in
 // `cpu_access`.
-wire win_hit_now = ext_window_valid && ext_window_is_mem && !cpu_d_io &&
+wire win_space_ok = ataxx_mode ? (!ext_window_is_mem && cpu_d_io) : (ext_window_is_mem && !cpu_d_io);
+wire win_hit_now = ext_window_valid && win_space_ok &&
 			   (cpu_addr >= window_base_word) && (cpu_addr < window_top_word);
 wire [8:0] window_word_offset_now = cpu_addr - window_base_word; // 0..0x17F
 
@@ -132,11 +138,11 @@ wire [5:0] pcs_offset = window_word_offset[5:0];
 wire pcs0_hit = win_hit && (pcs_select == 3'd0); // clock-active status
 wire pcs1_hit = win_hit && (pcs_select == 3'd1); // command(read)/response(write) latch
 wire pcs2_hit = win_hit && (pcs_select == 3'd2); // PIT0
-wire pcs3_hit = win_hit && (pcs_select == 3'd3); // PIT1
+wire pcs3_hit = win_hit && (pcs_select == 3'd3) && !ataxx_mode; // PIT1 (absent on Ataxx)
 wire pcs4_hit = win_hit && (pcs_select == 3'd4); // dac9 (word-write only)
-// pcs5 (Ataxx-only) intentionally unclaimed -- falls through to the
-// "unimplemented read returns 0xFFFF, write ignored" default below,
-// same as leland_a.cpp's own `m_type <= TYPE_REDLINE` guard skipping it.
+wire pcs5_hit = win_hit && (pcs_select == 3'd5); // Ataxx DAC control (ataxx_dac_control_w)
+// Outside Ataxx mode select 5 falls through to the "unimplemented read returns 0xFFFF,
+// write ignored" default below, like leland_a.cpp's `m_type <= TYPE_REDLINE` guard.
 
 // Any PCS-window hit that is not PIT0/PIT1 (pcs0/1/4 and the pcs5/select-6/7
 // fallthrough) is serviced locally through the registered `local_ack` below.
@@ -145,7 +151,7 @@ wire local_reg_hit = win_hit && !pcs2_hit && !pcs3_hit;
 // --- I/O-space dac_w hit decode (whole 64K word-addressed io space) ---
 // Not gated on cpu_access, like win_hit_now; cpu_d_io is stable for the whole
 // transaction, so no latch is needed.
-wire io_hit = cpu_d_io;
+wire io_hit = cpu_d_io && !ataxx_mode;
 // cpu_addr is a WORD address ([19:1], bit0 implicit); io space's word
 // offset equals cpu_addr directly (base 0), so "offset & 7" reads
 // cpu_addr's three LSBs starting at bit 1, and "offset & 0x60" (bits
@@ -256,6 +262,13 @@ wire pit1_c1_rise = pit1_c1_out & ~pit1_c1_out_d;
 wire pit1_c2_rise = pit1_c2_out & ~pit1_c2_out_d;
 
 wire dac_write_now = do_write && io_hit && wr_lo;
+
+// Ataxx: offset 0 -> dac 0 (+DRQ0 clear), 1 -> dac 1 (+DRQ1 clear), 2 -> dac 2, 3 -> volumes
+wire ax_wr   = ataxx_mode && do_write && pcs5_hit && wr_lo;
+wire ax_dac0 = ax_wr && (pcs_offset[4:0] == 5'd0);
+wire ax_dac1 = ax_wr && (pcs_offset[4:0] == 5'd1);
+wire ax_dac2 = ax_wr && (pcs_offset[4:0] == 5'd2);
+wire ax_vol  = ax_wr && (pcs_offset[4:0] == 5'd3);
 wire dac9_write_now = do_write && pcs4_hit && (cpu_bytesel == 2'b11); // mem_mask==0xffff, R10
 
 always_ff @(posedge clk or posedge reset) begin
@@ -278,6 +291,9 @@ always_ff @(posedge clk or posedge reset) begin
 		// dac_w's unconditional set_clock_line(dac,0) clear -- takes
 		// priority over a same-cycle set (see module header comment).
 		if (dac_write_now && dac_index < 3'd6) clock_active[dac_index] <= 1'b0;
+		if (ax_dac0) clock_active[0] <= 1'b0;
+		if (ax_dac1) clock_active[1] <= 1'b0;
+		if (ax_dac2) clock_active[2] <= 1'b0;
 		if (dac9_write_now) clock_active[6] <= 1'b0;
 	end
 end
@@ -299,6 +315,13 @@ generate
 					dac_sample[gi] <= cpu_data_out[7:0];
 					dac_wr[gi]     <= 1'b1;
 				end
+				if ((gi == 0 && ax_dac0) || (gi == 1 && ax_dac1) || (gi == 2 && ax_dac2)) begin
+					dac_sample[gi] <= cpu_data_out[7:0];
+					dac_wr[gi]     <= 1'b1;
+				end
+				if (ax_vol && gi == 0) dac_vol[gi] <= {cpu_data_out[2:0], 5'b0};
+				if (ax_vol && gi == 1) dac_vol[gi] <= {cpu_data_out[5:3], 5'b0};
+				if (ax_vol && gi == 2) dac_vol[gi] <= {cpu_data_out[7:6], 6'b0};
 				if (do_write && io_hit && wr_hi && dac_index == gi[2:0])
 					dac_vol[gi] <= cpu_data_out[15:8];
 			end
@@ -312,8 +335,8 @@ always_ff @(posedge clk or posedge reset) begin
 		drq0_clear <= 1'b0;
 		drq1_clear <= 1'b0;
 	end else begin
-		drq0_clear <= dac_write_now && (drq_region == 2'b10);
-		drq1_clear <= dac_write_now && (drq_region == 2'b11);
+		drq0_clear <= (dac_write_now && (drq_region == 2'b10)) || ax_dac0;
+		drq1_clear <= (dac_write_now && (drq_region == 2'b11)) || ax_dac1;
 	end
 end
 

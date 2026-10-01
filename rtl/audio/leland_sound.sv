@@ -19,6 +19,7 @@
 module leland_sound(
 	input  logic        clk_sys,   // 48 MHz
 	input  logic        reset,     // board reset
+	input  logic        ataxx_mode, // Ataxx sound board variant (I/O-mapped peripherals, PCS5 DACs)
 	input  logic        ce_8m,     // ~8MHz-equivalent CE -- paces ONLY
 									// i186_periph's internal timer tick
 									// (dac9's real sample rate); every
@@ -289,7 +290,7 @@ leland_sound_board board(
 	.mem_access(mem_access), .mem_ack(mem_ack), .mem_wr_en(mem_wr_en),
 	.mem_bytesel(mem_bytesel), .mem_d_io(mem_d_io),
 	.t0_tc_pulse(timer_tc_pulse[0]),
-	.pit_ce(pit_ce),
+	.pit_ce(pit_ce), .ataxx_mode(ataxx_mode),
 	.cmd_wr_data(cmd_wr_data), .cmd_wr_lo(cmd_wr_lo), .cmd_wr_hi(cmd_wr_hi),
 	.response_data(response_data), .response_wr(response_wr),
 	.control_data(sound_ctrl_data), .control_wr(sound_ctrl_wr),

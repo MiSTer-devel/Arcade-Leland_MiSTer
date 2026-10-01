@@ -224,6 +224,61 @@ always @(posedge clk_sys) if (ce_pix && !reset) begin
 	end
 end
 
+// Heartbeat every 50 ms: master PC, sound command writes and response reads so far
+integer n_cmd = 0, n_resp = 0;
+always @(posedge clk_sys) begin
+	if (dut.master_ax.CE_6M && dut.master_ax.io_wr &&
+	    (dut.master_ax.cpu_addr[7:0] == 8'h05 || dut.master_ax.cpu_addr[7:0] == 8'h06)) n_cmd <= n_cmd + 1;
+	if (dut.master_ax.CE_6M && dut.master_ax.io_rd && dut.master_ax.cpu_addr[7:0] == 8'h04) n_resp <= n_resp + 1;
+end
+always begin
+	#(50 * 64'd1_000_000);
+	if (!reset) $display("HB t=%0t pc=%04x spc=%04x cmd_wr=%0d resp_rd=%0d frame=%0d", $time, m_pc, s_pc, n_cmd, n_resp, frame_no);
+end
+
+`ifndef SIM_NO_SOUND
+// Sound board activity (80186 side)
+integer n_pcs0 = 0, n_rspw = 0, n_dacw = 0, n_pit = 0, n_ioother = 0, n_memacc = 0;
+reg acc_d = 0;
+always @(posedge clk_sys) begin
+	acc_d <= dut.sound.board.cpu_access;
+	if (dut.sound.board.cpu_access && !acc_d) begin
+		if (dut.sound.board.pcs0_hit && !dut.sound.board.cpu_wr_en) n_pcs0 <= n_pcs0 + 1;
+		if (dut.sound.board.pcs2_hit) n_pit <= n_pit + 1;
+		if (dut.sound.board.cpu_d_io && !dut.sound.board.win_hit) n_ioother <= n_ioother + 1;
+		if (!dut.sound.board.cpu_d_io && !dut.sound.board.win_hit) n_memacc <= n_memacc + 1;
+	end
+	if (dut.sound.board.response_wr) n_rspw <= n_rspw + 1;
+	if (dut.sound.board.dac_wr[0] || dut.sound.board.dac_wr[1] || dut.sound.board.dac_wr[2]) n_dacw <= n_dacw + 1;
+end
+// First sound-CPU bus accesses after reset release
+integer n_sacc = 0;
+reg sacc_d = 0;
+always @(posedge clk_sys) begin
+	sacc_d <= dut.sound.board.cpu_access;
+	if (dut.sound.board.cpu_access && dut.sound.board.cpu_ack && n_sacc < 80 && dut.sound.board.audiocpu_reset_n) begin
+		n_sacc <= n_sacc + 1;
+		$display("SACC #%0d t=%0t addr=%05x io=%0b wr=%0b bytesel=%b dout=%04x din=%04x", n_sacc, $time,
+		         {dut.sound.board.cpu_addr, 1'b0}, dut.sound.board.cpu_d_io, dut.sound.board.cpu_wr_en,
+		         dut.sound.board.cpu_bytesel, dut.sound.board.cpu_data_out, dut.sound.board.cpu_data_in);
+	end
+end
+// Sound core pin state every 5 ms after its reset release
+always begin
+	#(5 * 64'd1_000_000);
+	if (!reset && dut.sound.board.audiocpu_reset_n)
+		$display("SCORE t=%0t stopped=%0b instr_acc=%0b instr_ack=%0b data_acc=%0b data_ack=%0b lock=%0b intr=%0b inta=%0b irq=%02x ip=%04x",
+		         $time, dut.sound.debug_stopped, dut.sound.instr_m_access, dut.sound.instr_m_ack, dut.sound.data_m_access,
+		         dut.sound.data_m_ack, dut.sound.lock, dut.sound.intr, dut.sound.inta, dut.sound.irq, dut.sound.cpu.ip_current);
+end
+always begin
+	#(50 * 64'd1_000_000);
+	if (!reset) $display("SND t=%0t win(valid=%0b mem=%0b base=%05x) rst_n=%0b pcs0_rd=%0d pit=%0d resp_wr=%0d dac_wr=%0d io_other=%0d mem_acc=%0d",
+		$time, dut.sound.board.ext_window_valid, dut.sound.board.ext_window_is_mem, dut.sound.board.ext_window_base,
+		dut.sound.board.audiocpu_reset_n, n_pcs0, n_pit, n_rspw, n_dacw, n_ioother, n_memacc);
+end
+`endif
+
 // Video fetch starvation watchdog: rd2 request outstanding for > 5000 cycles
 integer rd2_wait = 0;
 always @(posedge clk_sys) begin

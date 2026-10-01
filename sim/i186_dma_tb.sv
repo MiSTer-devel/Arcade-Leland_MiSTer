@@ -209,7 +209,7 @@ leland_sound_board board(
     .mem_access(mem_access), .mem_ack(mem_ack), .mem_wr_en(mem_wr_en),
     .mem_bytesel(mem_bytesel), .mem_d_io(mem_d_io),
     .t0_tc_pulse(timer_tc_pulse[0]),
-    .pit_ce(pit_ce),
+    .pit_ce(pit_ce), .ataxx_mode(1'b0),
     .cmd_wr_data(cmd_wr_data), .cmd_wr_lo(cmd_wr_lo), .cmd_wr_hi(cmd_wr_hi),
     .response_data(response_data), .response_wr(response_wr),
     .control_data(control_data), .control_wr(control_wr),
