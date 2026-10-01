@@ -11,8 +11,9 @@ and the 80186-based sound board, all in RTL.
 | Ironman Ivan Stewart's Super Off-Road (rev 4) | `offroad` | `Ironman Ivan Stewart's Super Off-Road (rev 4).mra` |
 | Ironman Ivan Stewart's Super Off-Road Track-Pak (rev 4) | `offroadt` | `Ironman Ivan Stewart's Super Off-Road Track-Pak (rev 4).mra` |
 | Pig Out: Dine Like a Swine! (rev 2?) | `pigout` | `Pig Out Dine Like a Swine! (rev 2).mra` |
+| Ataxx (rev 5) | `ataxx` | `Ataxx (rev 5).mra` |
 
-All three are playable with sound. Other Leland boards are not supported.
+All four are playable with sound. Other Leland boards are not supported.
 
 The core was written from MAME's Leland drivers and the game ROMs, and has
 not been checked against an original PCB.
@@ -47,6 +48,15 @@ Buttons (`Nitro, Coin, Gas, Start`):
 | 3 | Gas (digital: off or full) | Start |
 | 4 | Menu Enter (see Service menu) | Coin |
 
+## Ataxx
+
+Ataxx uses a different board generation (80186 sound with a peripheral window in I/O space,
+tilemap video from RAM, 93C56 EEPROM) and has its own set of controls. The cursor is moved
+by the game's trackball, which the core drives from the analog stick, the D-pad (steps at a
+fixed rate, as MAME does for digital input) or a spinner. Buttons (`Place, Unused, Start,
+Coin`): 1 places a piece, 3 is Start, 4 is Coin. Its EEPROM is 256 bytes, so its MRA uses
+`<nvram index="4" size="256"/>`.
+
 ## Service menu
 
 Choose **Service Menu** in the OSD to open the operator menu. The core presses
@@ -74,7 +84,7 @@ Copy to your MiSTer:
 - the MRA for each game you want, from `releases/`, to `/media/fat/_Arcade/`
 
 You need the MAME 0.257 ROM zip for each game (`offroad`, `offroadt`,
-`pigout`). No ROM data is included in this repo.
+`pigout`, `ataxx`). No ROM data is included in this repo.
 
 The MRAs load ROMs through DDR3 (`address="0x30000000"`), which is much
 faster than the per-byte download.

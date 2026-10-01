@@ -50,7 +50,6 @@
 	  In Ataxx button 1 places a piece, button 3 is Start and button 4 is Coin
 	  (button 2 is unused). The two trackballs are driven by the analog stick, the
 	  D-pad or a spinner; the operator menu is opened from the OSD "Service Menu".
-	  Sound is not implemented yet.
 	-->
 	<buttons names="Place,Unused,Start,Coin"></buttons>
 
