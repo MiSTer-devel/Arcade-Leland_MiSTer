@@ -28,7 +28,7 @@
 
 `timescale 1ns / 1ps
 
-module leland_sound_ih_tb;
+module leland_sound_ax2_tb;
 
 // 48MHz -- the REAL clk_sys rate this design is built around (matches
 // leland_board_tb.sv's own convention), unlike every earlier unit bench's
@@ -60,7 +60,7 @@ wire signed [15:0] audio_out;
 reg ce_8m;
 
 leland_sound dut(
-    .clk_sys(clk_sys), .reset(reset), .ce_8m(ce_8m), .ataxx_mode(1'b1), .wsf_mode(1'b1),
+    .clk_sys(clk_sys), .reset(reset), .ce_8m(ce_8m), .ataxx_mode(1'b1), .wsf_mode(1'b0),
     .sound_ctrl_data(sound_ctrl_data), .sound_ctrl_wr(sound_ctrl_wr),
     .cmd_wr_data(cmd_wr_data), .cmd_wr_lo(cmd_wr_lo), .cmd_wr_hi(cmd_wr_hi),
     .response_data(response_data),
@@ -87,11 +87,11 @@ end
 reg [7:0] rom_img [0:1048575];
 integer rfd, rcount;
 initial begin
-    rfd = $fopen("indyheat_snd.bin", "rb");
-    if (!rfd) begin $display("ERROR: could not open indyheat_snd.bin"); $finish; end
+    rfd = $fopen("ataxx_snd.bin", "rb");
+    if (!rfd) begin $display("ERROR: could not open ataxx_snd.bin"); $finish; end
     rcount = $fread(rom_img, rfd);
     $fclose(rfd);
-    $display("Loaded indyheat_snd.bin (%0d bytes)", rcount);
+    $display("Loaded ataxx_snd.bin (%0d bytes)", rcount);
 end
 
 // --- Multi-cycle (3-wait-state) byte-wide memory model behind
@@ -154,7 +154,7 @@ initial begin
     reset = 1'b1;
     repeat (10) @(posedge clk_sys);
     reset = 1'b0;
-    evfd = $fopen("ih_events.txt", "r");
+    evfd = $fopen("ax2_events.txt", "r");
     t_next = 0;
     while (!$feof(evfd)) begin
         ecount = $fscanf(evfd, "%d %s %h\n", ef, eport, edata);
@@ -230,9 +230,9 @@ endtask
 initial begin
     if (!$value$plusargs("MAX_CYCLES=%d", MAX_CYCLES))
         MAX_CYCLES = 330*800000;
-    pcm_fd = $fopen("leland_sound_ih_tb.txt", "w");
+    pcm_fd = $fopen("leland_sound_ax2_tb.txt", "w");
     sample_div = 0;
-    pcm_ym_fd = $fopen("leland_sound_ih_ym.txt", "w");
+    pcm_ym_fd = $fopen("leland_sound_ax2_ym.txt", "w");
 end
 
 always @(posedge clk_sys) begin
@@ -273,7 +273,7 @@ task automatic stitch_wav;
         data_bytes = wav_sample_count * 2;
         byte_rate  = WAV_SAMPLE_RATE_HZ * 2;
         riff_bytes = 36 + data_bytes;
-        wav_fd = $fopen("leland_sound_ih_tb.wav", "wb");
+        wav_fd = $fopen("leland_sound_ax2_tb.wav", "wb");
         $fwrite(wav_fd, "RIFF");
         wav_u32(wav_fd, riff_bytes);
         $fwrite(wav_fd, "WAVE");
@@ -288,7 +288,7 @@ task automatic stitch_wav;
         $fwrite(wav_fd, "data");
         wav_u32(wav_fd, data_bytes);
 
-        rd_fd = $fopen("leland_sound_ih_tb.pcm", "rb");
+        rd_fd = $fopen("leland_sound_ax2_tb.pcm", "rb");
         c = $fgetc(rd_fd);
         while (c != -1) begin
             $fwrite(wav_fd, "%c", c[7:0]);
@@ -296,7 +296,7 @@ task automatic stitch_wav;
         end
         $fclose(rd_fd);
         $fclose(wav_fd);
-        $display("WAV written: leland_sound_ih_tb.wav (%0d samples @ %0d Hz nominal)",
+        $display("WAV written: leland_sound_ax2_tb.wav (%0d samples @ %0d Hz nominal)",
                    wav_sample_count, WAV_SAMPLE_RATE_HZ);
     end
 endtask

@@ -326,7 +326,7 @@ leland_dac_mixer mixer(
 
 // =====================================================================
 // YM2151 (WSF only): 4 MHz chip clock, 2 MHz phase enable. A write is held until the next
-// phase tick so the chip's register logic samples it.
+// phase tick, then applied as a single-clock pulse (the chip acts on every clock it is high).
 // =====================================================================
 reg ym_phase;
 always @(posedge clk_sys or posedge reset) begin
@@ -351,9 +351,17 @@ always @(posedge clk_sys or posedge reset) begin
 	end
 end
 
+// The chip's internal pipelines need a long reset to clear (a short one leaves it noisy).
+reg [11:0] ym_rst_cnt;
+wire       ym_rst = (ym_rst_cnt != 12'hFFF);
+always @(posedge clk_sys) begin
+	if (reset | ~wsf_mode) ym_rst_cnt <= 12'd0;
+	else if (ym_rst)       ym_rst_cnt <= ym_rst_cnt + 12'd1;
+end
+
 jt51 ym(
-	.rst(reset | ~wsf_mode), .clk(clk_sys), .cen(pit_ce), .cen_p1(ym_cen_p1),
-	.cs_n(1'b0), .wr_n(~ym_wr_hold), .a0(ym_a0_r), .din(ym_din_r), .dout(ym_dout),
+	.rst(ym_rst), .clk(clk_sys), .cen(pit_ce), .cen_p1(ym_cen_p1),
+	.cs_n(1'b0), .wr_n(~(ym_wr_hold & ym_cen_p1)), .a0(ym_a0_r), .din(ym_din_r), .dout(ym_dout),
 	.ct1(), .ct2(), .irq_n(), .sample(),
 	.left(ym_left), .right(ym_right), .xleft(), .xright());
 
