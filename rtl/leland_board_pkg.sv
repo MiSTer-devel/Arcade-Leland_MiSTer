@@ -96,7 +96,9 @@ package leland_board_pkg;
 	localparam logic [26:0] ADDR_PROM_BASE   = 27'h600000; // bg_prom (gen1-3)
 	localparam logic [26:0] PROM_MAX         = 27'h040000; // 256 KB reserved
 
-	localparam logic [26:0] ADDR_XROM_BASE   = 27'h640000; // xrom (gen4 only)
+	// XROM (WSF family) sits in the master region behind the code ROM, read through the master's
+	// SDRAM channel; the code ROM is at most 0x80000 bytes.
+	localparam logic [26:0] ADDR_XROM_BASE   = 27'h080000;
 	localparam logic [26:0] XROM_MAX         = 27'h040000; // 256 KB reserved
 
 	// Ext DAC samples (GEN4_WSF) live in the tail of the slave region so they are read through
@@ -149,11 +151,12 @@ package leland_board_pkg;
 		logic [7:0]     mvram_base; // leland_mvram_port_r/w window base
 	} game_cfg_t;
 
-	localparam int NUM_GAMES = 4;
+	localparam int NUM_GAMES = 5;
 	localparam int GAME_OFFROAD  = 0;
 	localparam int GAME_OFFROADT = 1;
 	localparam int GAME_PIGOUT   = 2;
 	localparam int GAME_ATAXX    = 3;
+	localparam int GAME_INDYHEAT = 4;
 
 	function automatic game_cfg_t game_cfg(input int game_id);
 		game_cfg_t cfg;
@@ -183,6 +186,13 @@ package leland_board_pkg;
 				board_class:  GEN4_ATAXX,
 				input_scheme: TRACKBALL,
 				flags:        (8'd1 << FLAG_EEPROM_93C56),
+				io_base:      8'h00,
+				mvram_base:   8'h00
+			};
+			GAME_INDYHEAT: cfg = '{
+				board_class:  GEN4_WSF,
+				input_scheme: WHEELS3_PEDALS3,
+				flags:        (8'd1 << FLAG_EEPROM_93C56) | (8'd1 << FLAG_XROM_PRESENT) | (8'd1 << FLAG_EXTDAC_PRESENT),
 				io_base:      8'h00,
 				mvram_base:   8'h00
 			};

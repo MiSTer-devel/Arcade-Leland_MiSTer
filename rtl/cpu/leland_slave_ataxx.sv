@@ -8,8 +8,9 @@ module leland_slave_ataxx
 	input         clk_sys,
 	input         reset,
 	input         CE_6M,
+	input         wsf_mode,    // WSF family: 0x160000-byte ROM, banks up to 15 plus bit 5
 
-	output [18:0] rom_addr,
+	output [20:0] rom_addr,
 	input   [7:0] rom_data,
 
 	output        vp_req,
@@ -87,14 +88,16 @@ tv80s_ce #(.Mode(0), .T2Write(1), .IOWait(1)) slave_cpu
 
 assign slave_halt_n = halt_n;
 
-// Bank register (ataxx_slave_banksw_w): block at 0x10000*bank + 0x8000*data[4]; bank 0
-// and banks past the 0x60000-byte ROM map the window onto the raw image.
-reg [4:0] bank_reg;
+// Bank register (ataxx_slave_banksw_w): block at 0x10000*bank + 0x8000*data[4] (+0x100000*data[5]
+// when the ROM is larger than 1 MB); bank 0 and blocks past the end of the ROM (0x60000 bytes
+// for Ataxx, 0x160000 for the WSF family) map the window onto the raw image.
+reg [5:0] bank_reg;
 wire [3:0] bank = bank_reg[3:0];
-wire bank_raw = (bank == 4'd0) || (bank > 4'd5);
+wire [5:0] block = {bank_reg[5] & wsf_mode, bank, bank_reg[4]};
+wire bank_raw = (bank == 4'd0) || (block >= (wsf_mode ? 6'd44 : 6'd12));
 
-assign rom_addr = (in_banked & ~bank_raw) ? {bank[2:0], bank_reg[4], cpu_addr[14:0]}
-	: {3'b0, cpu_addr};
+assign rom_addr = (in_banked & ~bank_raw) ? {block, cpu_addr[14:0]}
+	: {6'b0, cpu_addr};
 
 assign wram_addr = cpu_addr[11:0];
 assign wram_din  = cpu_dout;
@@ -141,9 +144,9 @@ wire bank_wr = CE_6M && mem_access && ~wr_n && (cpu_addr == 16'hFFFF);
 
 always @(posedge clk_sys) begin
 	if (reset)
-		bank_reg <= 5'd1;
+		bank_reg <= 6'd1;
 	else if (bank_wr)
-		bank_reg <= cpu_dout[4:0];
+		bank_reg <= cpu_dout[5:0];
 end
 
 always @(*) begin

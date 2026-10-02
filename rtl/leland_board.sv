@@ -1322,7 +1322,7 @@ wire        slave_halt_n;
 // The ROM line cache below stalls the master Z80 while a line refills.
 //------------------------------------------------------------------
 wire        master_rom_req;          // from leland_master
-wire [17:0] master_rom_addr_w;       // from leland_master (flat 256 KB offset)
+wire [19:0] master_rom_addr_w;       // from the master (flat ROM offset, XROM above 0x80000)
 reg  [7:0]  master_rom_data_r;       // latched SDRAM byte
 
 // Line cache for the master code fetch (rd0); see rtl/mem/rom_line_cache.sv.
@@ -1332,7 +1332,7 @@ wire master_rom_stall;
 // aliasing to 16 regions per line.
 rom_line_cache #(
 	.BASE       (leland_board_pkg::ADDR_MASTER_BASE),
-	.ADDR_WIDTH (18),
+	.ADDR_WIDTH (20),
 	.INDEX_BITS (11)
 ) rd0_cache (
 	.clk_sys      (clk_sys),
@@ -1415,7 +1415,8 @@ wire        sound_cmd_wr_lo, sound_cmd_wr_hi;
 wire  [7:0] sound_response_data; // 80186 response latch, leland_sound -> leland_master
 
 // Per-board-class master outputs (_g: Leland gen 1-3, _a: Ataxx), muxed by ataxx_sel.
-wire [17:0] master_rom_addr_g, master_rom_addr_a;
+wire [17:0] master_rom_addr_g;
+wire [19:0] master_rom_addr_a;
 wire        master_rom_req_g,  master_rom_req_a;
 wire        vp_req_mg, vp_rd_mg, vp_trans_mg;
 wire [15:0] vp_addr_mg;
@@ -1434,7 +1435,7 @@ wire [15:0] vid_addr_ma;
 wire        vid_addr_wr_ma;
 wire  [7:0] master_bank_ma;
 
-assign master_rom_addr_w = ataxx_sel ? master_rom_addr_a : master_rom_addr_g;
+assign master_rom_addr_w = ataxx_sel ? master_rom_addr_a : {2'b0, master_rom_addr_g};
 assign master_rom_req    = ataxx_sel ? master_rom_req_a  : master_rom_req_g;
 assign vp_req_m   = ataxx_sel ? vp_req_ma   : vp_req_mg;
 assign vp_rd_m    = ataxx_sel ? vp_rd_ma    : vp_rd_mg;
@@ -1458,6 +1459,10 @@ leland_master_ataxx master_ax
 	.clk_sys(clk_sys),
 	.reset(reset | ~cpu_release | ~ataxx_sel),
 	.CE_6M(CE_6M),
+
+	.wsf_mode(wsf_sel),
+	.p3_joy(p3_joy),
+	.p1_pedal(p1_pedal), .p2_pedal(p2_pedal), .p3_pedal(p3_pedal),
 
 	.rom_addr(master_rom_addr_a),
 	.rom_data(master_rom_data_r),
@@ -1518,8 +1523,8 @@ leland_master_ataxx master_ax
 	.cmd_wr_hi(sound_cmd_wr_hi_a),
 	.response_data(sound_response_data),
 
-	.p1_x(p1_tb_x), .p1_y(p1_tb_y),
-	.p2_x(p2_tb_x), .p2_y(p2_tb_y),
+	.p1_x(wsf_sel ? p1_wheel : p1_tb_x), .p1_y(wsf_sel ? p2_wheel : p1_tb_y),
+	.p2_x(wsf_sel ? p3_wheel : p2_tb_x), .p2_y(p2_tb_y),
 	.p1_joy(p1_joy), .p2_joy(p2_joy),
 	.service(service)
 );
@@ -1616,7 +1621,7 @@ leland_master master
 // Slave Z80 — SDRAM ROM stall logic (mirror of master scheme)
 //------------------------------------------------------------------
 wire        slave_rom_req;           // from leland_slave
-wire [18:0] slave_rom_addr_w;        // from leland_slave (flat 512 KB offset)
+wire [20:0] slave_rom_addr_w;        // from the slave (flat ROM offset)
 reg  [7:0]  slave_rom_data_r;        // latched SDRAM byte
 
 // Line cache for the slave code fetch (rd1).
@@ -1628,7 +1633,7 @@ wire        slv_sd_ack;
 // 2 KB direct-mapped; uncached, slave code fetches stalled on up to ~8% of cycles.
 rom_line_cache #(
 	.BASE       (leland_board_pkg::ADDR_SLAVE_BASE),
-	.ADDR_WIDTH (19),
+	.ADDR_WIDTH (21),
 	.INDEX_BITS (11)
 ) rd1_cache (
 	.clk_sys      (clk_sys),
@@ -1705,7 +1710,8 @@ assign ext_sd_ack  = sdram_rd1_ack && sd1_busy && sd1_ext;
 // master's /MCONT bit 0 (slave_reset_n). The master releases it once it has
 // finished its own initialisation.
 
-wire [18:0] slave_rom_addr_g, slave_rom_addr_a;
+wire [18:0] slave_rom_addr_g;
+wire [20:0] slave_rom_addr_a;
 wire        slave_rom_req_g,  slave_rom_req_a;
 wire        slave_halt_n_g,   slave_halt_n_a;
 wire        vp_req_sg, vp_rd_sg, vp_trans_sg, vp_req_sa, vp_rd_sa, vp_trans_sa;
@@ -1747,7 +1753,7 @@ leland_slave slave
 	.rom_stall(slave_rom_stall)
 );
 
-assign slave_rom_addr_w = ataxx_sel ? slave_rom_addr_a : slave_rom_addr_g;
+assign slave_rom_addr_w = ataxx_sel ? slave_rom_addr_a : {2'b0, slave_rom_addr_g};
 assign slave_rom_req    = ataxx_sel ? slave_rom_req_a  : slave_rom_req_g;
 assign slave_halt_n     = ataxx_sel ? slave_halt_n_a   : slave_halt_n_g;
 assign vp_req_s   = ataxx_sel ? vp_req_sa   : vp_req_sg;
@@ -1765,6 +1771,7 @@ leland_slave_ataxx slave_ax
 	.reset(reset | ~cpu_release | ~slave_reset_n | ~ataxx_sel),
 	.CE_6M(CE_6M),
 
+	.wsf_mode(wsf_sel),
 	.rom_addr(slave_rom_addr_a),
 	.rom_data(slave_rom_data_r),
 

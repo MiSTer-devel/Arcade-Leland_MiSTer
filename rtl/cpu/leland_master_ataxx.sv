@@ -9,7 +9,7 @@ module leland_master_ataxx
 	input         reset,
 	input         CE_6M,
 
-	output [17:0] rom_addr,
+	output [19:0] rom_addr,
 	input   [7:0] rom_data,
 	output        rom_req,
 	input         rom_stall,
@@ -71,7 +71,12 @@ module leland_master_ataxx
 	// Trackball accumulators (free-running mod 256) and digital inputs
 	input   [7:0] p1_x, p1_y, p2_x, p2_y,
 	input   [7:0] p1_joy, p2_joy,   // [4]=button [6]=start [7]=coin
-	input         service
+	input         service,
+
+	// WSF family (Indy Heat): banks 1-15, XROM, analog pedals, three players
+	input         wsf_mode,
+	input   [7:0] p3_joy,           // [4]=button [5]=button 2 [7]=coin
+	input   [7:0] p1_pedal, p2_pedal, p3_pedal
 );
 
 wire        m1_n, mreq_n, iorq_n, rd_n, wr_n, rfsh_n, halt_n, busak_n;
@@ -146,13 +151,24 @@ wire in_tram     = in_top & ~pal_view & (cpu_addr[10:2] != 9'h1FF);
 wire in_vidlat   = in_top & ~pal_view & (cpu_addr[10:1] == 10'h3FC);
 wire in_xrom     = in_top & ~pal_view & (cpu_addr[10:2] == 9'h1FF);
 
-assign rom_req = mem_access & ~rd_n & (in_fixed | in_banked | in_high_rom);
+assign rom_req = mem_access & ~rd_n & (in_fixed | in_banked | in_high_rom | (wsf_mode & in_xrom));
 
-// Banks 1-3 land on the 32 KB blocks at 0x8000*bank of the raw ROM; bank 0 and
-// out-of-range banks map the window straight onto the raw image.
-wire bank_raw = (master_bank[3:0] == 4'd0) || (master_bank[3:2] != 2'd0);
-assign rom_addr = (in_banked & ~bank_raw) ? {1'b0, master_bank[1:0], cpu_addr[14:0]} :
-	{2'b0, cpu_addr};
+// Bank n lands on the 32 KB block at 0x8000*n of the raw ROM (Ataxx has banks 1-3, the WSF
+// family 1-15); bank 0 and out-of-range banks map the window straight onto the raw image.
+wire bank_raw = (master_bank[3:0] == 4'd0) || (!wsf_mode && master_bank[3:2] != 2'd0);
+wire [18:0] code_addr = (in_banked & ~bank_raw) ? {master_bank[3:0], cpu_addr[14:0]} : {3'b0, cpu_addr};
+
+// XROM: two 16-bit address registers, the byte read back is chosen by cpu_addr[0].
+reg [15:0] xrom_ptr [0:1];
+wire [17:0] xrom_off = {cpu_addr[1], xrom_ptr[cpu_addr[1]], cpu_addr[0]};
+assign rom_addr = (wsf_mode & in_xrom) ? {2'b10, xrom_off} : {1'b0, code_addr};
+
+always @(posedge clk_sys) begin
+	if (CE_6M && mem_access && ~wr_n && in_xrom && wsf_mode) begin
+		if (cpu_addr[0]) xrom_ptr[cpu_addr[1]][15:8] <= cpu_dout;
+		else             xrom_ptr[cpu_addr[1]][7:0]  <= cpu_dout;
+	end
+end
 
 // RAM
 assign wram_addr = cpu_addr[12:0];
@@ -240,6 +256,16 @@ function automatic [7:0] dial_compute(input [7:0] new_val, input [7:0] last_val,
 endfunction
 
 wire io_dial = (cpu_addr[7:2] == 6'd0);
+
+// Indy Heat analog window 0x08-0x0F: writing the pedal number to 0x0B latches that pedal, 0x09 reads it
+wire io_ih = (cpu_addr[7:3] == 5'b00001);
+reg [7:0] pedal_result;
+always @(posedge clk_sys) begin
+	if (reset)
+		pedal_result <= 8'h00;
+	else if (CE_6M && io_wr && wsf_mode && cpu_addr[7:0] == 8'h0B)
+		pedal_result <= (cpu_dout == 8'd0) ? p1_pedal : (cpu_dout == 8'd1) ? p2_pedal : (cpu_dout == 8'd2) ? p3_pedal : 8'h00;
+end
 wire [1:0] dial_ch = cpu_addr[1:0];
 
 reg [7:0] dial_last [0:3];
@@ -270,8 +296,10 @@ wire io_eep   = (cpu_addr[7:0] == 8'h20);
 wire io_f0    = (cpu_addr[7:4] == 4'hF);
 wire [3:0] f_off = cpu_addr[3:0];
 
-wire [7:0] in0 = {~p2_joy[4], ~p2_joy[6], ~p1_joy[4], ~p1_joy[6],
+wire [7:0] in0_ax = {~p2_joy[4], ~p2_joy[6], ~p1_joy[4], ~p1_joy[6],
 	~service, 1'b1, ~p2_joy[7], ~p1_joy[7]};
+wire [7:0] in0_ih = {~p1_joy[5], 3'b111, p3_joy[7], p2_joy[7], p1_joy[7], 1'b1};
+wire [7:0] in0 = wsf_mode ? in0_ih : in0_ax;
 wire [7:0] in1 = {6'h3F, ~vblank, ~slave_halt_n};
 
 // Writes
@@ -341,12 +369,12 @@ assign cmd_wr_hi       = cmd_wr_hi_r;
 always @(*) begin
 	cpu_din = 8'hFF;
 	if (mem_access && ~rd_n) begin
-		if      (in_fixed || in_banked || in_high_rom) cpu_din = rom_data;
+		if      (in_fixed || in_banked || in_high_rom || (wsf_mode && in_xrom)) cpu_din = rom_data;
 		else if (in_battram)             cpu_din = battram_dout;
 		else if (in_qram)                cpu_din = qram_dout;
 		else if (in_ram || in_tram)      cpu_din = wram_dout;
 		else if (in_pal)                 cpu_din = pal_dout;
-		// xrom is unpopulated on Ataxx and reads as erased flash
+		// without wsf_mode the xrom is unpopulated and reads as erased flash
 	end else if (io_rd) begin
 		if      (io_dial)  cpu_din = dial_now;
 		else if (io_resp)  cpu_din = response_data;
@@ -354,6 +382,16 @@ always @(*) begin
 		else if (io_vram)  cpu_din = vram_rd_data;
 		else if (io_f0 && f_off == 4'h6) cpu_din = in0;
 		else if (io_f0 && f_off == 4'h7) cpu_din = in1;
+		else if (wsf_mode && io_ih) begin
+			case (cpu_addr[3:0])
+				4'h8, 4'hA: cpu_din = 8'h00;
+				4'h9:       cpu_din = pedal_result;
+				4'hD:       cpu_din = {7'h7F, ~p1_joy[4]};
+				4'hE:       cpu_din = {7'h7F, ~p2_joy[4]};
+				4'hF:       cpu_din = {~service, 6'h3F, ~p3_joy[4]};
+				default:    cpu_din = 8'hFF;
+			endcase
+		end
 	end
 end
 
