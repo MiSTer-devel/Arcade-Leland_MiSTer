@@ -74,6 +74,11 @@ defaults. The MRAs must include the `<nvram index="4" size="128"/>` line.
 - The first **Service Menu** selection after loading the core does not open the menu in
   any of the three games. Later attempts work. It looks like a timing race, and a second
   selection is the workaround.
+- Pig Out and Brute Force can still show a few wrong background pixels (up to about 30,
+  one scanline high) at the left edge of the top of the status panel at the bottom of the
+  screen, where the game changes scroll in the middle of the picture. A longer line there
+  is fixed. The rest follows the game's own scroll-write timing against the raster, and
+  it is not known whether an original board shows it (see `sim/BRUTE_FORCE_HUD_TIMING.md`).
 
 ## Installing
 
