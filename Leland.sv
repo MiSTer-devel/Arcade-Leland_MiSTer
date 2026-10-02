@@ -126,6 +126,8 @@ wire [31:0] joy4;
 wire [15:0] joy1_ana, joy2_ana, joy3_ana;
 // Spinner: [8]=toggle (flips on every host update), [7:0]=signed delta
 wire  [8:0] spinner1, spinner2, spinner3;
+// Mouse: PS/2 packet, [24] toggles per update, [15:8] X delta, [23:16] Y delta, [0] left button
+wire [24:0] ps2_mouse;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
@@ -139,6 +141,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.status(status),
 	.status_menumask(0),
 	.ps2_key(ps2_key),
+	.ps2_mouse(ps2_mouse),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -283,36 +286,36 @@ steering_input steer3
 	.wheel_pos(p3_wheel_pos)
 );
 
-// Ataxx trackballs: D-pad steps, stick with a dead zone, spinner (X only). Y positive is
-// down, like the MiSTer analog axis.
+// Ataxx trackballs: D-pad steps, stick with a dead zone, spinner (X only) and the mouse on
+// player 1. Y positive is down, like the MiSTer analog axis.
 wire [7:0] p1_tb_x, p1_tb_y, p2_tb_x, p2_tb_y;
 
 trackball_input tb1x
 (
 	.clk_sys(clk_sys), .reset(reset), .ce_frame(ce_frame),
 	.analog(joy1_ana[7:0]), .dpad_neg(joy1[1]), .dpad_pos(joy1[0]),
-	.spinner(spinner1), .pos(p1_tb_x)
+	.spinner(spinner1), .mouse({ps2_mouse[24], ps2_mouse[15:8]}), .mouse_invert(1'b0), .pos(p1_tb_x)
 );
 
 trackball_input tb1y
 (
 	.clk_sys(clk_sys), .reset(reset), .ce_frame(ce_frame),
 	.analog(joy1_ana[15:8]), .dpad_neg(joy1[3]), .dpad_pos(joy1[2]),
-	.spinner(9'd0), .pos(p1_tb_y)
+	.spinner(9'd0), .mouse({ps2_mouse[24], ps2_mouse[23:16]}), .mouse_invert(1'b1), .pos(p1_tb_y)
 );
 
 trackball_input tb2x
 (
 	.clk_sys(clk_sys), .reset(reset), .ce_frame(ce_frame),
 	.analog(joy2_ana[7:0]), .dpad_neg(joy2[1]), .dpad_pos(joy2[0]),
-	.spinner(spinner2), .pos(p2_tb_x)
+	.spinner(spinner2), .mouse(9'd0), .mouse_invert(1'b0), .pos(p2_tb_x)
 );
 
 trackball_input tb2y
 (
 	.clk_sys(clk_sys), .reset(reset), .ce_frame(ce_frame),
 	.analog(joy2_ana[15:8]), .dpad_neg(joy2[3]), .dpad_pos(joy2[2]),
-	.spinner(9'd0), .pos(p2_tb_y)
+	.spinner(9'd0), .mouse(9'd0), .mouse_invert(1'b0), .pos(p2_tb_y)
 );
 
 // Gas: MiSTer has no analog trigger, so it is a digital button (3rd J1 entry) driving the
@@ -324,7 +327,7 @@ wire [7:0] p3_gas = joy3[6] ? 8'hFF : 8'h00;
 // 4-player digital joystick for Pig Out: MiSTer's standard joystick vector low byte
 // already matches leland_board's p*_joy layout ([0]=right [1]=left [2]=down [3]=up
 // [4]=btn1 [5]=btn2), with the two spare fire bits used as start and coin.
-wire [7:0] p1_joy = joy1[7:0];
+wire [7:0] p1_joy = joy1[7:0] | {3'd0, ps2_mouse[0], 4'd0};
 wire [7:0] p2_joy = joy2[7:0];
 wire [7:0] p3_joy = joy3[7:0];
 wire [7:0] p4_joy = joy4[7:0];

@@ -52,8 +52,9 @@ Buttons (`Nitro, Coin, Gas, Start`):
 
 Ataxx uses a different board generation (80186 sound with a peripheral window in I/O space,
 tilemap video from RAM, 93C56 EEPROM) and has its own set of controls. The cursor is moved
-by the game's trackball, which the core drives from the analog stick, the D-pad (steps at a
-fixed rate, as MAME does for digital input) or a spinner. Buttons (`Place, Unused, Start,
+by the game's trackball, which the core drives from a mouse or trackball (player 1, both axes;
+left click is button 1), the analog stick, the D-pad (steps at a fixed rate, as MAME does for
+digital input) or a spinner (X axis only). Buttons (`Place, Unused, Start,
 Coin`): 1 places a piece, 3 is Start, 4 is Coin. Its EEPROM is 256 bytes, so its MRA uses
 `<nvram index="4" size="256"/>`.
 
