@@ -84,10 +84,9 @@ localparam CONF_STR = {
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
-	// The 4th button ("Start") exists for Pig Out, whose input scheme maps J1 bits 4-7 to
-	// button 1, button 2, start and coin; without it there is nothing to bind to bit 7 and
-	// Pig Out never sees a coin. Off-Road uses bit 7 as "Menu Enter" (see svc_req).
-	"J1,Nitro,Coin,Gas,Start;",
+	// Default names; each MRA supplies its own list. Buttons are ordered player controls,
+	// then coin, then start, and unused buttons are left out (see button_map).
+	"J1,Gas,Nitro,Menu Enter,Coin,Start;",
 	"v,0;",
 	"V,v",`BUILD_DATE
 };
@@ -244,6 +243,7 @@ wire       HBlank, HSync, VBlank, VSync;
 wire [23:0] rgb;        // 24-bit colour after palette lookup
 
 wire signed [15:0] audio_out; // mono, from the sound board's DAC mixer
+wire  [7:0] game_id;
 
 //----------------------------------------------------------------
 // Steering: analog stick, d-pad and spinner are combined into the free-running virtual
@@ -318,19 +318,30 @@ trackball_input tb2y
 	.spinner(9'd0), .mouse(9'd0), .mouse_invert(1'b0), .pos(p2_tb_y)
 );
 
+//----------------------------------------------------------------
+// Button order: each game lists its buttons as player controls, then coin, then start (see
+// button_map.sv), so the J1 bits are reordered per game before the board sees them.
+//----------------------------------------------------------------
+wire [7:0] j1, j2, j3, j4;
+wire       menu1, menu2_unused, menu3_unused, menu4_unused;
+button_map bmap1 (.game_id(game_id), .joy(joy1[7:0]), .board(j1), .menu(menu1));
+button_map bmap2 (.game_id(game_id), .joy(joy2[7:0]), .board(j2), .menu(menu2_unused));
+button_map bmap3 (.game_id(game_id), .joy(joy3[7:0]), .board(j3), .menu(menu3_unused));
+button_map bmap4 (.game_id(game_id), .joy(joy4[7:0]), .board(j4), .menu(menu4_unused));
+
 // Gas: MiSTer has no analog trigger, so it is a digital button (3rd J1 entry) driving the
 // pedal to its two endpoints (0 = released, 255 = full).
-wire [7:0] p1_gas = joy1[6] ? 8'hFF : 8'h00;
-wire [7:0] p2_gas = joy2[6] ? 8'hFF : 8'h00;
-wire [7:0] p3_gas = joy3[6] ? 8'hFF : 8'h00;
+wire [7:0] p1_gas = j1[6] ? 8'hFF : 8'h00;
+wire [7:0] p2_gas = j2[6] ? 8'hFF : 8'h00;
+wire [7:0] p3_gas = j3[6] ? 8'hFF : 8'h00;
 
 // 4-player digital joystick for Pig Out: MiSTer's standard joystick vector low byte
 // already matches leland_board's p*_joy layout ([0]=right [1]=left [2]=down [3]=up
 // [4]=btn1 [5]=btn2), with the two spare fire bits used as start and coin.
-wire [7:0] p1_joy = joy1[7:0] | {3'd0, ps2_mouse[0], 4'd0};
-wire [7:0] p2_joy = joy2[7:0];
-wire [7:0] p3_joy = joy3[7:0];
-wire [7:0] p4_joy = joy4[7:0];
+wire [7:0] p1_joy = j1 | {3'd0, ps2_mouse[0], 4'd0};
+wire [7:0] p2_joy = j2;
+wire [7:0] p3_joy = j3 | {3'd0, menu1, 4'd0}; // Indy Heat: Menu Enter is player 3's Nitro in the menus
+wire [7:0] p4_joy = j4;
 
 //----------------------------------------------------------------
 // Service / operator menu
@@ -357,7 +368,7 @@ always @(posedge clk_sys) begin
 end
 wire svc_start = (svc_cnt != 25'd0);
 wire svc_req   = (svc_cnt != 25'd0) && (svc_cnt <= SVC_TEST_AT);
-wire p3_nitro  = joy3[4] | svc_req | joy1[7];
+wire p3_nitro  = j3[4] | svc_req | menu1;
 
 //----------------------------------------------------------------
 // Board
@@ -414,9 +425,9 @@ leland_board board
 	//
 	// Nitro and Coin are J1 buttons 1-2 (joystick bits 4-5): p1_btn[1] is nitro and
 	// p1_btn[3] is coin, matching MAME's GIN0/GIN1 bit layout.
-	.p1_btn({joy1[5], 1'b0, joy1[4], 1'b0}),
-	.p2_btn({joy2[5], 1'b0, joy2[4], 1'b0}),
-	.p3_btn({joy3[5], 1'b0, p3_nitro, 1'b0}),
+	.p1_btn({j1[5], 1'b0, j1[4], 1'b0}),
+	.p2_btn({j2[5], 1'b0, j2[4], 1'b0}),
+	.p3_btn({j3[5], 1'b0, p3_nitro, 1'b0}),
 	// Wheel: free-running virtual dial from steering_input.sv.
 	.p1_wheel(p1_wheel_pos),
 	.p2_wheel(p2_wheel_pos),
@@ -436,6 +447,7 @@ leland_board board
 
 	// Service (Test) switch, driven by the OSD "Service Menu" action
 	.service(svc_req),
+	.game_id(game_id),
 
 	.audio_out(audio_out)
 );

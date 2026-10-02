@@ -96,6 +96,9 @@ module leland_board #(
 	// OSD options
 	input         service,
 
+	// Header game id, so the top level can order the buttons per game
+	output  [7:0] game_id,
+
 	// Audio (leland_dac_mixer mono output, via leland_sound)
 	output signed [15:0] audio_out
 );
@@ -500,6 +503,7 @@ assign board_class_r = board_class_e'(hdr_board_class_raw);
 // only sanity-check values; the table is authoritative.
 leland_board_pkg::game_cfg_t game_cfg_r;
 assign game_cfg_r = leland_board_pkg::game_cfg(hdr_game_id);
+assign game_id    = hdr_game_id;
 
 wire [7:0] io_base_r    = game_cfg_r.io_base;
 wire [7:0] mvram_base_r = game_cfg_r.mvram_base;

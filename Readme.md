@@ -12,8 +12,9 @@ and the 80186-based sound board, all in RTL.
 | Ironman Ivan Stewart's Super Off-Road Track-Pak (rev 4) | `offroadt` | `Ironman Ivan Stewart's Super Off-Road Track-Pak (rev 4).mra` |
 | Pig Out: Dine Like a Swine! (rev 2?) | `pigout` | `Pig Out Dine Like a Swine! (rev 2).mra` |
 | Ataxx (rev 5) | `ataxx` | `Ataxx (rev 5).mra` |
+| Danny Sullivan's Indy Heat (rev 1) | `indyheat` | `Danny Sullivan's Indy Heat (rev 1).mra` |
 
-All four are playable with sound. Other Leland boards are not supported.
+All five are playable with sound. Other Leland boards are not supported.
 
 The core was written from MAME's Leland drivers and the game ROMs, and has
 not been checked against an original PCB.
@@ -39,14 +40,18 @@ Steering comes from three sources that are added together, so they can be mixed:
 | Analog stick | Deflection sets the turn rate |
 | D-pad | Left/Right steer. **D-Pad Steering** selects **Velocity** (default: ramps a turn rate and coasts back to straight) or **Position** (a virtual spring-centered stick) |
 
-Buttons (`Nitro, Coin, Gas, Start`):
+Buttons are listed per game as player controls, then coin, then start, and a game only lists the
+buttons it uses, so the OSD mapping never asks for an unused one. Each MRA carries its own names:
 
-| Button | Super Off-Road / Track-Pak | Pig Out |
-|---|---|---|
-| 1 | Nitro | Button 1 (Jump) |
-| 2 | Coin | Button 2 (Throw) |
-| 3 | Gas (digital: off or full) | Start |
-| 4 | Menu Enter (see Service menu) | Coin |
+| Game | Buttons, in mapping order |
+|---|---|
+| Super Off-Road / Track-Pak | Gas (digital: off or full), Nitro, Menu Enter (see Service menu), Coin |
+| Indy Heat | Gas (digital), Nitro, Menu Enter (see Service menu), Coin |
+| Pig Out | Jump, Throw, Coin, Start |
+| Ataxx | Place, Coin, Start |
+
+After updating from an earlier release, re-run **Define joystick buttons** in the OSD: the order
+changed for every game.
 
 ## Ataxx
 
@@ -54,15 +59,21 @@ Ataxx uses a different board generation (80186 sound with a peripheral window in
 tilemap video from RAM, 93C56 EEPROM) and has its own set of controls. The cursor is moved
 by the game's trackball, which the core drives from a mouse or trackball (player 1, both axes;
 left click is button 1), the analog stick, the D-pad (steps at a fixed rate, as MAME does for
-digital input) or a spinner (X axis only). Buttons (`Place, Unused, Start,
-Coin`): 1 places a piece, 3 is Start, 4 is Coin. Its EEPROM is 256 bytes, so its MRA uses
+digital input) or a spinner (X axis only). Its EEPROM is 256 bytes, so its MRA uses
 `<nvram index="4" size="256"/>`.
+
+## Indy Heat
+
+Indy Heat is the same board generation as Ataxx with a different sound board: a YM2151 music chip
+(the jt51 core, a submodule) and an external sample DAC. Steering and Nitro work for three players
+on controllers 1 to 3, one wheel and one Nitro button each, as on the cabinet (Red, Yellow and Blue
+wheels); the gas pedal is a digital button.
 
 ## Service menu
 
 Choose **Service Menu** in the OSD to open the operator menu. The core presses
-Test for you (plus P1 Start for Pig Out). In the Super Off-Road menus, **Menu
-Enter** acts as Blue Nitro (P3 Nitro), so one controller can select with Nitro
+Test for you (plus P1 Start for Pig Out). In the Super Off-Road and Indy Heat menus,
+**Menu Enter** acts as Blue Nitro (P3 Nitro), so one controller can select with Nitro
 and enter with Menu Enter. Lives and difficulty are set here; the hardware has
 no DIP switches.
 
@@ -85,14 +96,14 @@ Copy to your MiSTer:
 - the MRA for each game you want, from `releases/`, to `/media/fat/_Arcade/`
 
 You need the MAME 0.257 ROM zip for each game (`offroad`, `offroadt`,
-`pigout`, `ataxx`). No ROM data is included in this repo.
+`pigout`, `ataxx`, `indyheat`). No ROM data is included in this repo.
 
 The MRAs load ROMs through DDR3 (`address="0x30000000"`), which is much
 faster than the per-byte download.
 
 ## Building
 
-Requires Quartus Prime 17.0.x. The Z80 core is a submodule:
+Requires Quartus Prime 17.0.x. The Z80 core and the YM2151 core are submodules:
 
 ```sh
 git clone --recurse-submodules https://github.com/shimian5/Arcade-Leland_MiSTer

@@ -63,14 +63,14 @@
 	</rom>
 
 	<!--
-	  Button labels: the core shares one set of OSD button names across its games.
-	  Button 1 is the player's Nitro button (the cabinet has one per wheel: Red = player 1,
-	  Yellow = player 2, Blue = player 3), button 2 has no cabinet equivalent, button 3 is
-	  Gas (digital) and button 4 is Coin. Players 2 and 3 use the second and third
-	  controllers. Steering is the analog stick, D-pad or a spinner. The service menu moves
-	  with player 1 Nitro (next) and player 3 Nitro (choose).
+	  Buttons are ordered player controls, then coin: Gas, Nitro, Menu Enter, Coin. The cabinet
+	  has one Nitro button per wheel (Red = player 1, Yellow = player 2, Blue = player 3) and
+	  a gas pedal, which is a digital button here. In the operator menu player 1 Nitro moves to
+	  the next item and player 3 Nitro chooses, so Menu Enter acts as player 3's Nitro. The
+	  menu is opened from the OSD "Service Menu". Players 2 and 3 use the second and third
+	  controllers. Steering is the analog stick, D-pad or a spinner.
 	-->
-	<buttons names="Nitro,Unused,Gas,Coin"></buttons>
+	<buttons names="Gas,Nitro,Menu Enter,Coin"></buttons>
 
 	<nvram index="4" size="256"/>
 </misterromdescription>

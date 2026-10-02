@@ -17,6 +17,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/leland_board_pkg.sv
 set_global_assignment -name SYSTEMVERILOG_FILE Leland.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/io/steering_input.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/io/trackball_input.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/io/button_map.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/sdram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/sdram_banked.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mem/rom_line_cache.sv
