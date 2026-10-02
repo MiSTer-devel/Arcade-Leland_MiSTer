@@ -69,7 +69,7 @@ function automatic signed [15:0] model_mix(
         for (i = 0; i < 6; i = i + 1) begin
             sd = $signed({1'b0, samp[i]}) - 9'sd128;
             pr = sd * $signed({1'b0, vol[i]});
-            gp = pr * 9'sd51;
+            gp = pr * 10'sd102;
             gd = gp >>> 8;
             tot = tot + gd;
         end

@@ -12,8 +12,10 @@
 // is offset-binary (128 is zero) and `volume` is a plain 0-255 gain. dac9 (AD7533) has
 // no volume register, is offset-binary centred at 512, and has gain 1.0.
 //
-// Gains: leland_a.cpp routes each 8-bit channel at 0.2 and dac9 at 1.0, implemented as
-// Q8 multipliers (GAIN_8BIT=51/256, GAIN_10BIT=255/256). dac9's signed range (-512..511)
+// Gains: leland_a.cpp routes each 8-bit channel at 0.2 and dac9 at 1.0. MAME's volume DAC
+// (DAC_8BIT_BINARY_WEIGHTED) has a gain of 2.0, which doubles every 8-bit channel (measured
+// against a MAME capture of Indy Heat). Implemented as Q8 multipliers (GAIN_8BIT=102/256,
+// GAIN_10BIT=255/256). dac9's signed range (-512..511)
 // is first scaled by DAC9_SCALE to match one 8-bit channel's full-scale product
 // (~32640), so both channel types land in a comparable range before summing.
 module leland_dac_mixer(
@@ -29,7 +31,7 @@ module leland_dac_mixer(
 	output logic signed [15:0] audio_out
 );
 
-localparam signed [8:0] GAIN_8BIT_Q8  = 9'sd51;  // 0.2  * 256, ~0.199
+localparam signed [9:0] GAIN_8BIT_Q8  = 10'sd102; // 0.4 (0.2 x the volume DAC's 2.0) * 256, ~0.398
 localparam signed [8:0] GAIN_10BIT_Q8 = 9'sd255; // 1.0  * 256, ~0.996
 localparam signed [8:0] GAIN_YM_Q8    = 9'sd102; // 0.4  * 256
 localparam signed [10:0] DAC9_SCALE   = 11'sd64; // 511*64=32704, comparable to an 8-bit channel's max product (127*255=32385)

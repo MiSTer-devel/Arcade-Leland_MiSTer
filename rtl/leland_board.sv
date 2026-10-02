@@ -1901,7 +1901,7 @@ leland_video video
 	.gfxbank(gfxbank_m),
 
 	.sdram_rd2_req  (sdram_rd2_req_v),
-	.sdram_rd2_ack  (sdram_rd2_ack),
+	.sdram_rd2_ack  (sdram_rd2_ack & ~(rx_active | repack_active | ee_active)), // boot FSMs borrow rd2; their acks are not the video's
 	.sdram_rd2_addr (sdram_rd2_addr_v),
 	.sdram_rd2_data (sdram_rd2_data),
 	.sdram_rd2_data16(sdram_rd2_data16),
