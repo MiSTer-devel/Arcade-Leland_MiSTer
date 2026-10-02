@@ -9,17 +9,18 @@
 //  CPUs and sound keep running at full speed.
 //
 //  Write side : samples the game's video (rgb + HBlank/VBlank) on the game's
-//               ce_pix and stores each active pixel as its 8-bit BGR 2-3-3
-//               colour (the palette byte layout, see leland_video.sv col_r/g/b:
-//               the 24-bit expansion is exactly reversible from 8 bits). Eight
-//               pixels are packed into one 64-bit word and written to DDR3.
+//               ce_pix and stores each active pixel in 16 bits: the BGR 2-3-3
+//               palette byte for the older boards or the 4-4-4 palette word for
+//               the Ataxx/WSF boards (g_ax). The 24-bit expansion of either is
+//               exactly reversible. Four pixels are packed into one 64-bit word
+//               and written to DDR3.
 //  Read side  : independent generator, 6.857 MHz (clk_sys/7), 436x262 =
 //               3052 clk/line = 15.727 kHz / 60.03 Hz.
 //
-//  Frame store: three 320x240 frames (76800 B each) in the HPS DDR3, through
+//  Frame store: three 320x240 frames (153600 B each) in the HPS DDR3, through
 //  the framework's DDRAM port, instead of ~225 M10K blocks. The only block
 //  RAM used is two small line buffers and the gamma ROM.
-//  Layout (64-bit word index): {frame[1:0], line*40 + x/8}, 16384 words per
+//  Layout (64-bit word index): {frame[1:0], line*80 + x/4}, 32768 words per
 //  frame, at DDR byte address 0x38000000 (the ROM staging area used by the
 //  fast loader is at 0x30000000, see leland_ddr_loader.sv).
 //
@@ -60,6 +61,7 @@ module leland_retimer
 	input             g_hblank,
 	input             g_vblank,
 	input      [23:0] g_rgb,
+	input             g_ax,
 
 	// Vertical position (OSD): 0..12 = move picture up that many lines,
 	// 13..15 = move it down 3..1 lines. Done by moving vsync later/earlier
@@ -169,25 +171,26 @@ wire swap_now = o_tick && (hc == 10'd0) && (vc == nact) && pending;
 // Write side: pack 8 pixels -> one 64-bit word -> 16-deep FIFO -> DDR3
 //------------------------------------------------------------------
 wire        g_de   = ~g_hblank & ~g_vblank;
-wire  [7:0] g_col8 = {g_rgb[7:6], g_rgb[15:13], g_rgb[23:21]};
+wire [15:0] g_col16 = g_ax ? {4'd0, g_rgb[23:20], g_rgb[15:12], g_rgb[7:4]}
+                           : {8'd0, g_rgb[7:6], g_rgb[15:13], g_rgb[23:21]};
 
 reg        g_vb_d  = 1'b0;
 reg [16:0] woff    = 17'd0;
-reg [55:0] wsh     = 56'd0;   // pixels 0..6 of the word being assembled
+reg [47:0] wsh     = 48'd0;   // pixels 0..2 of the word being assembled
 
 wire       g_vb_rise  = g_vblank & ~g_vb_d;
 wire       frame_done = g_vb_rise && (woff == FRAME_PIX);
 wire [1:0] rbuf_n     = swap_now ? lbuf : rbuf;
 
 reg [63:0] wf_data [0:15];
-reg [15:0] wf_addr [0:15];
+reg [16:0] wf_addr [0:15];
 reg [3:0]  wf_wp  = 4'd0, wf_rp = 4'd0;
 reg [4:0]  wf_cnt = 5'd0;
 wire       wf_push;
 wire       wf_pop;
 
 wire       pix_store = g_ce_pix && g_de && (woff < FRAME_PIX);
-assign     wf_push   = pix_store && (woff[2:0] == 3'd7);
+assign     wf_push   = pix_store && (woff[1:0] == 2'd3);
 
 always @(posedge clk_sys) begin
 	if (g_ce_pix) begin
@@ -195,8 +198,8 @@ always @(posedge clk_sys) begin
 
 		if (pix_store) begin
 			woff <= woff + 1'd1;
-			if (woff[2:0] != 3'd7)
-				wsh[woff[2:0]*8 +: 8] <= g_col8;
+			if (woff[1:0] != 2'd3)
+				wsh[woff[1:0]*16 +: 16] <= g_col16;
 		end
 
 		if (g_vb_rise) begin
@@ -218,8 +221,8 @@ always @(posedge clk_sys) begin
 	end
 
 	if (wf_push) begin
-		wf_data[wf_wp] <= {g_col8, wsh};
-		wf_addr[wf_wp] <= {wbuf, woff[16:3]};
+		wf_data[wf_wp] <= {g_col16, wsh};
+		wf_addr[wf_wp] <= {wbuf, woff[16:2]};
 		wf_wp          <= wf_wp + 1'd1;
 	end
 	if (wf_pop) wf_rp <= wf_rp + 1'd1;
@@ -234,16 +237,16 @@ end
 //------------------------------------------------------------------
 reg        rd_act   = 1'b0;   // line fetch has reads left to issue
 reg        rd_which = 1'b0;   // 0: source line A, 1: source line B
-reg [5:0]  rd_w     = 6'd0;   // word within the line (0..39)
-reg [13:0] rowA_w   = 14'd0;  // word index of source line A within a frame
-reg [13:0] rowB_w   = 14'd0;
+reg [6:0]  rd_w     = 7'd0;   // word within the line (0..79)
+reg [14:0] rowA_w   = 15'd0;  // word index of source line A within a frame
+reg [14:0] rowB_w   = 15'd0;
 reg [1:0]  fbuf     = 2'd0;   // frame buffer this fetch reads
 
 wire cmd_free = ~(DDRAM_RD | DDRAM_WE) | ~DDRAM_BUSY;
 
 assign wf_pop = cmd_free && !stop && (wf_cnt != 5'd0);
 
-wire [13:0] rd_row = rd_which ? rowB_w : rowA_w;
+wire [14:0] rd_row = rd_which ? rowB_w : rowA_w;
 
 wire fetch_start;
 
@@ -263,19 +266,19 @@ always @(posedge clk_sys) begin
 	if (fetch_start) begin
 		rd_act   <= 1'b1;
 		rd_which <= 1'b0;
-		rd_w     <= 6'd0;
+		rd_w     <= 7'd0;
 	end
 
 	if (cmd_free && !stop) begin
 		if (wf_cnt != 5'd0) begin
 			DDRAM_WE   <= 1'b1;
-			DDRAM_ADDR <= {4'b0011, 1'b1, 8'd0, wf_addr[wf_rp]};
+			DDRAM_ADDR <= {4'b0011, 1'b1, 7'd0, wf_addr[wf_rp]};
 			DDRAM_DIN  <= wf_data[wf_rp];
 		end else if (rd_act && !fetch_start) begin
 			DDRAM_RD   <= 1'b1;
-			DDRAM_ADDR <= {4'b0011, 1'b1, 8'd0, fbuf, rd_row + {8'd0, rd_w}};
-			if (rd_w == 6'd39) begin
-				rd_w <= 6'd0;
+			DDRAM_ADDR <= {4'b0011, 1'b1, 7'd0, fbuf, rd_row + {8'd0, rd_w}};
+			if (rd_w == 7'd79) begin
+				rd_w <= 7'd0;
 				if (rd_which) rd_act <= 1'b0;
 				rd_which <= 1'b1;
 			end else begin
@@ -286,16 +289,16 @@ always @(posedge clk_sys) begin
 end
 
 //------------------------------------------------------------------
-// Line buffers: two 64-bit x 128 RAMs (source line A / B), each holding
-// two 40-word lines (ping-pong on line parity). DDR3 read responses arrive
-// in order: first 40 words are line A, next 40 are line B.
+// Line buffers: two 64-bit x 256 RAMs (source line A / B), each holding
+// two 80-word lines (ping-pong on line parity). DDR3 read responses arrive
+// in order: first 80 words are line A, next 80 are line B.
 //------------------------------------------------------------------
-reg [63:0] lbA [0:127];
-reg [63:0] lbB [0:127];
+reg [63:0] lbA [0:255];
+reg [63:0] lbB [0:255];
 reg        r_fpar   = 1'b0;
 reg        r_which  = 1'b0;
-reg [5:0]  r_w      = 6'd0;
-reg  [6:0] la;
+reg [6:0]  r_w      = 7'd0;
+reg  [7:0] la;
 reg [63:0] A_q, B_q;
 
 wire dout_v = DDRAM_DOUT_READY & ~stop;
@@ -303,10 +306,10 @@ wire dout_v = DDRAM_DOUT_READY & ~stop;
 always @(posedge clk_sys) begin
 	if (fetch_start) begin
 		r_which <= 1'b0;
-		r_w     <= 6'd0;
+		r_w     <= 7'd0;
 	end else if (dout_v) begin
-		if (r_w == 6'd39) begin
-			r_w     <= 6'd0;
+		if (r_w == 7'd79) begin
+			r_w     <= 7'd0;
 			r_which <= 1'b1;
 		end else begin
 			r_w <= r_w + 1'd1;
@@ -337,15 +340,15 @@ wire [7:0]  iB_n     = (iA_n == 8'd239) ? iA_n : iA_n + 1'd1;
 
 assign fetch_start = o_tick && (hc == 10'd0) && (nvc < nact) && !stop;
 
-// line index * 40 = (i << 5) + (i << 3)
-wire [13:0] iA40 = {1'b0, iA_n, 5'd0} + {3'd0, iA_n, 3'd0};
-wire [13:0] iB40 = {1'b0, iB_n, 5'd0} + {3'd0, iB_n, 3'd0};
+// line index * 80 = (i << 6) + (i << 4)
+wire [14:0] iA80 = {1'b0, iA_n, 6'd0} + {3'd0, iA_n, 4'd0};
+wire [14:0] iB80 = {1'b0, iB_n, 6'd0} + {3'd0, iB_n, 4'd0};
 
 always @(posedge clk_sys) begin
 	if (fetch_start) begin
 		y_n_r   <= y_n;
-		rowA_w  <= iA40;
-		rowB_w  <= iB40;
+		rowA_w  <= iA80;
+		rowB_w  <= iB80;
 		fbuf    <= rbuf;
 		r_fpar  <= nvc[0];
 	end
@@ -354,7 +357,8 @@ always @(posedge clk_sys) begin
 end
 
 //------------------------------------------------------------------
-// Gamma tables (2.2). Source levels: R,G 3 bits, B 2 bits, -> 12-bit linear.
+// Gamma tables (2.2). Source levels: R,G 3 bits, B 2 bits, or 4 bits per channel
+// on the Ataxx/WSF boards, -> 12-bit linear.
 // The inverse ROM (12-bit linear -> 8-bit) is generated with the exact
 // source levels forced to round-trip, so weight 32/0 is bit-exact.
 //------------------------------------------------------------------
@@ -379,6 +383,27 @@ function [11:0] lin_b(input [1:0] i);
 	endcase
 endfunction
 
+function [11:0] lin4(input [3:0] i);
+	case (i)
+		4'd0: lin4 = 12'd0;
+		4'd1: lin4 = 12'd11;
+		4'd2: lin4 = 12'd49;
+		4'd3: lin4 = 12'd119;
+		4'd4: lin4 = 12'd224;
+		4'd5: lin4 = 12'd365;
+		4'd6: lin4 = 12'd545;
+		4'd7: lin4 = 12'd766;
+		4'd8: lin4 = 12'd1027;
+		4'd9: lin4 = 12'd1331;
+		4'd10: lin4 = 12'd1678;
+		4'd11: lin4 = 12'd2070;
+		4'd12: lin4 = 12'd2506;
+		4'd13: lin4 = 12'd2989;
+		4'd14: lin4 = 12'd3518;
+		default: lin4 = 12'd4095;
+	endcase
+endfunction
+
 reg [7:0] inv_rom [0:4095];
 initial $readmemh(GAMMA_HEX, inv_rom);
 
@@ -393,7 +418,7 @@ reg  [7:0] rom_q;
 //   tick     : output pixel n-1 (blank flags delayed one pixel to match;
 //              sync is not delayed, a one-pixel picture shift)
 //------------------------------------------------------------------
-reg  [7:0] pA_r, pB_r;
+reg [15:0] pA_r, pB_r;
 reg [11:0] lin_r, lin_g, lin_bl;
 reg  [7:0] o8_r, o8_g, o8_b;
 
@@ -415,18 +440,24 @@ always @(posedge clk_sys) begin
 	o_ce_pix <= o_tick;
 
 	// line buffer read address for pixel hc (current line parity)
-	la <= {vc[0], hc[8:3]};
+	la <= {vc[0], hc[8:2]};
 
 	if (ocnt == 3'd3) begin
-		pA_r <= A_q[hc[2:0]*8 +: 8];
-		pB_r <= B_q[hc[2:0]*8 +: 8];
+		pA_r <= A_q[hc[1:0]*16 +: 16];
+		pB_r <= B_q[hc[1:0]*16 +: 16];
 	end
 
 	// linear-light blend of the two source lines
 	if (ocnt == 3'd0) begin
-		lin_r  <= mix(lin_rg(pA_r[2:0]), lin_rg(pB_r[2:0]), wA, wB);
-		lin_g  <= mix(lin_rg(pA_r[5:3]), lin_rg(pB_r[5:3]), wA, wB);
-		lin_bl <= mix(lin_b (pA_r[7:6]), lin_b (pB_r[7:6]), wA, wB);
+		if (g_ax) begin
+			lin_r  <= mix(lin4(pA_r[11:8]), lin4(pB_r[11:8]), wA, wB);
+			lin_g  <= mix(lin4(pA_r[7:4]),  lin4(pB_r[7:4]),  wA, wB);
+			lin_bl <= mix(lin4(pA_r[3:0]),  lin4(pB_r[3:0]),  wA, wB);
+		end else begin
+			lin_r  <= mix(lin_rg(pA_r[2:0]), lin_rg(pB_r[2:0]), wA, wB);
+			lin_g  <= mix(lin_rg(pA_r[5:3]), lin_rg(pB_r[5:3]), wA, wB);
+			lin_bl <= mix(lin_b (pA_r[7:6]), lin_b (pB_r[7:6]), wA, wB);
+		end
 	end
 
 	// gamma re-encode through one shared ROM, one channel per clock

@@ -5,21 +5,24 @@
 //   +mode=1    constant colour: every active output pixel must equal it,
 //              and the active line count must equal nact
 //   +mode=2    vertical ramp: output column must be monotonic
+//   +ax=1      4-bit-per-channel (Ataxx/WSF) pixels
 //   +ms=N      simulated milliseconds (default 100)
 // Game side: 424x256, one pixel every 7 clk (~63 Hz, faster than the reader).
 module tb_retimer2;
 reg clk = 0;
 always #10 clk = ~clk;
 
-integer vsize_i, mode_i, ms_i;
+integer vsize_i, mode_i, ms_i, ax_i;
 initial begin
+	if (!$value$plusargs("ax=%d",    ax_i))    ax_i    = 0;
 	if (!$value$plusargs("vsize=%d", vsize_i)) vsize_i = 0;
 	if (!$value$plusargs("mode=%d",  mode_i))  mode_i  = 0;
 	if (!$value$plusargs("ms=%d",    ms_i))    ms_i    = 100;
 end
 
 function [23:0] expand(input [7:0] c);
-	expand = { {c[2:0],c[2:0],c[2:1]}, {c[5:3],c[5:3],c[5:4]}, {c[7:6],c[7:6],c[7:6],c[7:6]} };
+	if (ax_i != 0) expand = { {2{c[7:4]}}, {2{c[3:0]}}, {2{c[5:2]}} };
+	else expand = { {c[2:0],c[2:0],c[2:1]}, {c[5:3],c[5:3],c[5:4]}, {c[7:6],c[7:6],c[7:6],c[7:6]} };
 endfunction
 
 // ---------------- game side ----------------
@@ -67,7 +70,7 @@ wire        wf_ovf;
 
 leland_retimer #(.GAMMA_HEX("../../rtl/video/gamma_inv.hex")) dut(
 	.clk_sys(clk), .stop(1'b0),
-	.g_ce_pix(g_ce), .g_hblank(g_hb), .g_vblank(g_vb), .g_rgb(g_rgb),
+	.g_ce_pix(g_ce), .g_hblank(g_hb), .g_vblank(g_vb), .g_rgb(g_rgb), .g_ax(ax_i != 0),
 	.vpos(4'd0), .vsize(vsize_i[2:0]),
 	.o_ce_pix(o_ce), .o_hblank(o_hb), .o_hsync(o_hs), .o_vblank(o_vb), .o_vsync(o_vs), .o_rgb(o_rgb),
 	.DDRAM_CLK(ddr_clk), .DDRAM_BUSY(ddr_busy), .DDRAM_BURSTCNT(ddr_bc), .DDRAM_ADDR(ddr_addr),

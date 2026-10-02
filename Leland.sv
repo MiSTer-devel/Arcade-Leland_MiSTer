@@ -244,6 +244,7 @@ wire [23:0] rgb;        // 24-bit colour after palette lookup
 
 wire signed [15:0] audio_out; // mono, from the sound board's DAC mixer
 wire  [7:0] game_id;
+wire        ax_video;
 
 //----------------------------------------------------------------
 // Steering: analog stick, d-pad and spinner are combined into the free-running virtual
@@ -448,6 +449,7 @@ leland_board board
 	// Service (Test) switch, driven by the OSD "Service Menu" action
 	.service(svc_req),
 	.game_id(game_id),
+	.ax_video(ax_video),
 
 	.audio_out(audio_out)
 );
@@ -475,6 +477,7 @@ leland_retimer retimer
 	.g_hblank(HBlank),
 	.g_vblank(VBlank),
 	.g_rgb(rgb),
+	.g_ax(ax_video),
 	.vpos(status[16:13]),
 	.vsize(status[19:17]),
 	.o_ce_pix(rt_ce),

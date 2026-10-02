@@ -99,6 +99,9 @@ module leland_board #(
 	// Header game id, so the top level can order the buttons per game
 	output  [7:0] game_id,
 
+	// 4-bit-per-channel palette (Ataxx/WSF boards), for the CRT retimer
+	output        ax_video,
+
 	// Audio (leland_dac_mixer mono output, via leland_sound)
 	output signed [15:0] audio_out
 );
@@ -523,6 +526,7 @@ localparam [26:0] ADDR_EEPROM_REAL_HI_G4 = ADDR_EEPROM_BASE + 27'h000100;
 
 wire wsf_sel   = (game_cfg_r.board_class == GEN4_WSF);
 wire ataxx_sel = (game_cfg_r.board_class == GEN4_ATAXX) || wsf_sel;
+assign ax_video = ataxx_sel;
 
 logic [26:0] wr_gate_hi;
 always @(*) begin
