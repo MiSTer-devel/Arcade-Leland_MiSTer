@@ -64,9 +64,11 @@
 	<!--
 	  Buttons are ordered player controls, then coin, then start. Button 1 punches or kicks
 	  depending on the stick direction and button 2 dives. Players 2 and 3 use the second
-	  and third controllers. The operator menu is opened from the OSD "Service Menu".
+	  and third controllers. The operator menu is opened from the OSD "Service Menu"; in it
+	  player 1 Start moves to the next item and player 3 Start chooses, so Menu Enter acts
+	  as player 3 Start.
 	-->
-	<buttons names="Punch/Kick,Dive,Coin,Start"></buttons>
+	<buttons names="Punch/Kick,Dive,Menu Enter,Coin,Start"></buttons>
 
 	<nvram index="4" size="256"/>
 </misterromdescription>

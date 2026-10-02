@@ -325,10 +325,11 @@ trackball_input tb2y
 //----------------------------------------------------------------
 wire [7:0] j1, j2, j3, j4;
 wire       menu1, menu2_unused, menu3_unused, menu4_unused;
-button_map bmap1 (.game_id(game_id), .joy(joy1[7:0]), .board(j1), .menu(menu1));
-button_map bmap2 (.game_id(game_id), .joy(joy2[7:0]), .board(j2), .menu(menu2_unused));
-button_map bmap3 (.game_id(game_id), .joy(joy3[7:0]), .board(j3), .menu(menu3_unused));
-button_map bmap4 (.game_id(game_id), .joy(joy4[7:0]), .board(j4), .menu(menu4_unused));
+wire [7:0] menu_p3_1, menu_p3_2_unused, menu_p3_3_unused, menu_p3_4_unused;
+button_map bmap1 (.game_id(game_id), .joy(joy1[8:0]), .board(j1), .menu(menu1), .menu_p3(menu_p3_1));
+button_map bmap2 (.game_id(game_id), .joy(joy2[8:0]), .board(j2), .menu(menu2_unused), .menu_p3(menu_p3_2_unused));
+button_map bmap3 (.game_id(game_id), .joy(joy3[8:0]), .board(j3), .menu(menu3_unused), .menu_p3(menu_p3_3_unused));
+button_map bmap4 (.game_id(game_id), .joy(joy4[8:0]), .board(j4), .menu(menu4_unused), .menu_p3(menu_p3_4_unused));
 
 // Gas: MiSTer has no analog trigger, so it is a digital button (3rd J1 entry) driving the
 // pedal to its two endpoints (0 = released, 255 = full).
@@ -341,7 +342,7 @@ wire [7:0] p3_gas = j3[6] ? 8'hFF : 8'h00;
 // [4]=btn1 [5]=btn2), with the two spare fire bits used as start and coin.
 wire [7:0] p1_joy = j1 | {3'd0, ps2_mouse[0], 4'd0};
 wire [7:0] p2_joy = j2;
-wire [7:0] p3_joy = j3 | {3'd0, menu1, 4'd0}; // Indy Heat: Menu Enter is player 3's Nitro in the menus
+wire [7:0] p3_joy = j3 | menu_p3_1; // Menu Enter is player 3's Nitro (Brute Force: Start) in the menus
 wire [7:0] p4_joy = j4;
 
 //----------------------------------------------------------------

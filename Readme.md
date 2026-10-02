@@ -49,7 +49,7 @@ buttons it uses, so the OSD mapping never asks for an unused one. Each MRA carri
 | Super Off-Road / Track-Pak | Gas (digital: off or full), Nitro, Menu Enter (see Service menu), Coin |
 | Indy Heat | Gas (digital), Nitro, Menu Enter (see Service menu), Coin |
 | Pig Out | Jump, Throw, Coin, Start |
-| Brute Force | Punch/Kick, Dive, Coin, Start (three players, controllers 1 to 3) |
+| Brute Force | Punch/Kick, Dive, Menu Enter (see Service menu), Coin, Start (three players, controllers 1 to 3) |
 | Ataxx | Place, Coin, Start |
 
 After updating from an earlier release, re-run **Define joystick buttons** in the OSD: the order
@@ -58,10 +58,11 @@ changed for every game.
 ## Service menu
 
 Choose **Service Menu** in the OSD to open the operator menu. The core presses
-Test for you (plus P1 Start for Pig Out). In the Super Off-Road and Indy Heat menus,
-**Menu Enter** acts as Blue Nitro (P3 Nitro), so one controller can select with Nitro
-and enter with Menu Enter. Lives and difficulty are set here; the hardware has
-no DIP switches.
+Test for you (plus P1 Start for Pig Out and Brute Force). In the Super Off-Road and
+Indy Heat menus, **Menu Enter** acts as Blue Nitro (P3 Nitro), so one controller can
+select with Nitro and enter with Menu Enter. In the Brute Force menu, P1 Start moves to
+the next item and **Menu Enter** acts as P3 Start to choose it. Lives and difficulty are
+set here; the hardware has no DIP switches.
 
 Operator settings and bookkeeping (the game's EEPROM) are saved to the SD card as
 `/media/fat/config/nvram/<MRA name>.nvm` when you open the OSD after the game has changed
