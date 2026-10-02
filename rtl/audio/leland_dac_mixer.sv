@@ -23,12 +23,15 @@ module leland_dac_mixer(
 	input  logic [7:0]  dac_sample [0:5],
 	input  logic [7:0]  dac_vol    [0:5],
 	input  logic [9:0]  dac9_sample,
+	input  logic signed [15:0] ym_left,  // YM2151 (WSF), routed at 0.40 per channel
+	input  logic signed [15:0] ym_right,
 
 	output logic signed [15:0] audio_out
 );
 
 localparam signed [8:0] GAIN_8BIT_Q8  = 9'sd51;  // 0.2  * 256, ~0.199
 localparam signed [8:0] GAIN_10BIT_Q8 = 9'sd255; // 1.0  * 256, ~0.996
+localparam signed [8:0] GAIN_YM_Q8    = 9'sd102; // 0.4  * 256
 localparam signed [10:0] DAC9_SCALE   = 11'sd64; // 511*64=32704, comparable to an 8-bit channel's max product (127*255=32385)
 
 logic signed [8:0]  sdiff  [0:5]; // sample - 128
@@ -69,21 +72,24 @@ end
 // adding one clk_sys cycle (~21 ns) of audio latency.
 logic signed [16:0] gained_r  [0:5];
 logic signed [17:0] gained9_r;
+logic signed [24:0] gained_ym_r;
 
 always_ff @(posedge clk or posedge reset) begin
 	if (reset) begin
 		gained_r[0] <= 17'sd0; gained_r[1] <= 17'sd0; gained_r[2] <= 17'sd0;
 		gained_r[3] <= 17'sd0; gained_r[4] <= 17'sd0; gained_r[5] <= 17'sd0;
 		gained9_r   <= 18'sd0;
+		gained_ym_r <= 25'sd0;
 	end else begin
 		gained_r[0] <= gained[0]; gained_r[1] <= gained[1]; gained_r[2] <= gained[2];
 		gained_r[3] <= gained[3]; gained_r[4] <= gained[4]; gained_r[5] <= gained[5];
 		gained9_r   <= gained9;
+		gained_ym_r <= ((ym_left + ym_right) * GAIN_YM_Q8) >>> 8;
 	end
 end
 
 always_comb begin
-	sum_all = gained_r[0] + gained_r[1] + gained_r[2] + gained_r[3] + gained_r[4] + gained_r[5] + gained9_r;
+	sum_all = gained_r[0] + gained_r[1] + gained_r[2] + gained_r[3] + gained_r[4] + gained_r[5] + gained9_r + gained_ym_r;
 
 	// Saturate to signed 16-bit (MiSTer's AUDIO_L/AUDIO_R width).
 	if (sum_all > 21'sd32767)

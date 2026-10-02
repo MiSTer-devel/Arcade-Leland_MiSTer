@@ -99,8 +99,10 @@ package leland_board_pkg;
 	localparam logic [26:0] ADDR_XROM_BASE   = 27'h640000; // xrom (gen4 only)
 	localparam logic [26:0] XROM_MAX         = 27'h040000; // 256 KB reserved
 
-	localparam logic [26:0] ADDR_EXTDAC_BASE = 27'h680000; // ext DAC samples (GEN4_WSF)
-	localparam logic [26:0] EXTDAC_MAX       = 27'h080000; // 512 KB reserved
+	// Ext DAC samples (GEN4_WSF) live in the tail of the slave region so they are read through
+	// the slave's SDRAM channel; a WSF slave ROM is at most 0x160000 bytes.
+	localparam logic [26:0] ADDR_EXTDAC_BASE = 27'h2C0000;
+	localparam logic [26:0] EXTDAC_MAX       = 27'h040000; // 256 KB reserved
 
 	localparam logic [26:0] ADDR_EEPROM_BASE = 27'h700000; // EEPROM default image
 	localparam logic [26:0] EEPROM_MAX       = 27'h001000; // 4 KB reserved

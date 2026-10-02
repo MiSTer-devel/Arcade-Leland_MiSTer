@@ -60,7 +60,7 @@ wire signed [15:0] audio_out;
 reg ce_8m;
 
 leland_sound dut(
-    .clk_sys(clk_sys), .reset(reset), .ce_8m(ce_8m), .ataxx_mode(1'b1),
+    .clk_sys(clk_sys), .reset(reset), .ce_8m(ce_8m), .ataxx_mode(1'b1), .wsf_mode(1'b0), .ext_data(8'h00), .ext_stall(1'b0),
     .sound_ctrl_data(sound_ctrl_data), .sound_ctrl_wr(sound_ctrl_wr),
     .cmd_wr_data(cmd_wr_data), .cmd_wr_lo(cmd_wr_lo), .cmd_wr_hi(cmd_wr_hi),
     .response_data(response_data),

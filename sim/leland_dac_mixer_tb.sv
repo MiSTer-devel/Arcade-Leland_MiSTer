@@ -32,7 +32,7 @@ wire signed [15:0] audio_out;
 
 leland_dac_mixer dut(
     .clk(clk), .reset(reset),
-    .dac_sample(dac_sample), .dac_vol(dac_vol), .dac9_sample(dac9_sample),
+    .dac_sample(dac_sample), .dac_vol(dac_vol), .dac9_sample(dac9_sample), .ym_left(16'sd0), .ym_right(16'sd0),
     .audio_out(audio_out));
 
 integer fd;

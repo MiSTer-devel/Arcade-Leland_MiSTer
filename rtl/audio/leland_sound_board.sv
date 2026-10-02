@@ -65,6 +65,20 @@ module leland_sound_board(
 	// three DACs plus their volumes are written through PCS select 5.
 	input  logic         ataxx_mode,
 
+	// WSF variant (Indy Heat): adds the YM2151 at select 3 and the external sample DAC
+	// controlled through select 5 offsets 4-7 and clocked by internal timer 1.
+	input  logic         wsf_mode,
+	input  logic         t1_tc_pulse,
+	input  logic         t1_state,        // tmrout1 level at terminal count
+	output logic         ym_we,           // 1-cycle strobe
+	output logic         ym_a0,
+	output logic [7:0]  ym_din,
+	input  logic [7:0]  ym_dout,
+	output logic         ext_req,
+	output logic [17:0] ext_addr,
+	input  logic [7:0]  ext_data,
+	input  logic         ext_stall,
+
 	// --- Z80-facing command/response/control seam ---
 	input  logic [15:0] cmd_wr_data,
 	input  logic         cmd_wr_lo, cmd_wr_hi,   // 1-cycle strobes (command_lo_w/command_hi_w)
@@ -139,6 +153,7 @@ wire pcs0_hit = win_hit && (pcs_select == 3'd0); // clock-active status
 wire pcs1_hit = win_hit && (pcs_select == 3'd1); // command(read)/response(write) latch
 wire pcs2_hit = win_hit && (pcs_select == 3'd2); // PIT0
 wire pcs3_hit = win_hit && (pcs_select == 3'd3) && !ataxx_mode; // PIT1 (absent on Ataxx)
+wire ym_hit   = win_hit && (pcs_select == 3'd3) && wsf_mode;
 wire pcs4_hit = win_hit && (pcs_select == 3'd4); // dac9 (word-write only)
 wire pcs5_hit = win_hit && (pcs_select == 3'd5); // Ataxx DAC control (ataxx_dac_control_w)
 // Outside Ataxx mode select 5 falls through to the "unimplemented read returns 0xFFFF,
@@ -269,6 +284,64 @@ wire ax_dac0 = ax_wr && (pcs_offset[4:0] == 5'd0);
 wire ax_dac1 = ax_wr && (pcs_offset[4:0] == 5'd1);
 wire ax_dac2 = ax_wr && (pcs_offset[4:0] == 5'd2);
 wire ax_vol  = ax_wr && (pcs_offset[4:0] == 5'd3);
+wire ym_wr_now = do_write && ym_hit && wr_lo;
+
+// Ataxx offsets 4-7 (WSF only): external DAC enable, disable, start and stop in 16-byte
+// units. A byte write merges into the 16-bit register like MAME's COMBINE_DATA.
+wire ext_wr   = wsf_mode && do_write && pcs5_hit;
+wire [15:0] ext_merge_mask = (cpu_bytesel == 2'b11) ? 16'hFFFF : (cpu_bytesel == 2'b10) ? 16'hFF00 : 16'h00FF;
+
+reg        ext_active;
+reg [19:0] ext_start, ext_stop;
+reg        ext_req_r;
+reg [17:0] ext_addr_r;
+wire       ext_done = ext_req_r && !ext_stall;
+wire       ext_trigger = wsf_mode && t1_tc_pulse && t1_state && ext_active && (ext_start < ext_stop) && !ext_req_r;
+assign ext_req  = ext_req_r;
+assign ext_addr = ext_addr_r;
+
+always_ff @(posedge clk or posedge reset) begin
+	if (reset) begin
+		ext_req_r  <= 1'b0;
+		ext_addr_r <= 18'h0;
+	end else if (ext_trigger) begin
+		ext_req_r  <= 1'b1;
+		ext_addr_r <= ext_start[17:0];
+	end else if (ext_done) begin
+		ext_req_r  <= 1'b0;
+	end
+end
+
+always_ff @(posedge clk or posedge reset) begin
+	if (reset) begin
+		ym_we  <= 1'b0;
+		ym_a0  <= 1'b0;
+		ym_din <= 8'h00;
+	end else begin
+		ym_we <= ym_wr_now;
+		if (ym_wr_now) begin
+			ym_a0  <= pcs_offset[0];
+			ym_din <= cpu_data_out[7:0];
+		end
+	end
+end
+
+always_ff @(posedge clk or posedge reset) begin
+	if (reset) begin
+		ext_active <= 1'b0;
+		ext_start  <= 20'h0;
+		ext_stop   <= 20'h0;
+	end else begin
+		if (ext_wr && pcs_offset == 6'd4) ext_active <= 1'b1;
+		if (ext_wr && pcs_offset == 6'd5) ext_active <= 1'b0;
+		if (ext_wr && pcs_offset == 6'd6)
+			ext_start <= {(ext_start[19:4] & ~ext_merge_mask) | (cpu_data_out & ext_merge_mask), 4'h0};
+		if (ext_wr && pcs_offset == 6'd7)
+			ext_stop <= {(ext_stop[19:4] & ~ext_merge_mask) | (cpu_data_out & ext_merge_mask), 4'h0};
+		if (ext_done) ext_start <= ext_start + 20'd1;
+	end
+end
+
 wire dac9_write_now = do_write && pcs4_hit && (cpu_bytesel == 2'b11); // mem_mask==0xffff, R10
 
 always_ff @(posedge clk or posedge reset) begin
@@ -282,6 +355,7 @@ always_ff @(posedge clk or posedge reset) begin
 		pit1_c1_out_d <= pit1_c1_out;
 		pit1_c2_out_d <= pit1_c2_out;
 
+		if (wsf_mode && t1_tc_pulse) clock_active[3] <= t1_state;
 		if (pit0_c2_rise) clock_active[2] <= 1'b1;
 		if (pit1_c0_rise) clock_active[3] <= 1'b1;
 		if (pit1_c1_rise) clock_active[4] <= 1'b1;
@@ -307,7 +381,7 @@ generate
 				// dac_sample is offset-binary centred at 128, so the reset value is 8'h80 (silence).
 				// The channel is also muted by dac_vol resetting to 0.
 				dac_sample[gi] <= 8'h80;
-				dac_vol[gi]    <= 8'h00;
+				dac_vol[gi]    <= (gi == 3 && wsf_mode) ? 8'hFF : 8'h00;
 				dac_wr[gi]     <= 1'b0;
 			end else begin
 				dac_wr[gi] <= 1'b0;
@@ -317,6 +391,10 @@ generate
 				end
 				if ((gi == 0 && ax_dac0) || (gi == 1 && ax_dac1) || (gi == 2 && ax_dac2)) begin
 					dac_sample[gi] <= cpu_data_out[7:0];
+					dac_wr[gi]     <= 1'b1;
+				end
+				if (gi == 3 && ext_done) begin
+					dac_sample[gi] <= ext_data;
 					dac_wr[gi]     <= 1'b1;
 				end
 				if (ax_vol && gi == 0) dac_vol[gi] <= {cpu_data_out[2:0], 5'b0};
@@ -366,6 +444,8 @@ always_comb begin
 		local_rd_val = {8'h00, ((({1'b0, clock_active}) >> 1) & 8'h3e)};
 	else if (pcs1_hit)
 		local_rd_val = sound_command;
+	else if (ym_hit)
+		local_rd_val = {8'h00, ym_dout};
 	else
 		local_rd_val = 16'hFFFF;
 end

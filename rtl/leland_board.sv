@@ -517,13 +517,15 @@ localparam [26:0] ADDR_PROM_REAL_HI = ADDR_PROM_BASE + 27'h020000;
 localparam [26:0] ADDR_EEPROM_REAL_HI = ADDR_EEPROM_BASE + 27'h000080;
 localparam [26:0] ADDR_EEPROM_REAL_HI_G4 = ADDR_EEPROM_BASE + 27'h000100;
 
-wire ataxx_sel = (game_cfg_r.board_class == GEN4_ATAXX);
+wire wsf_sel   = (game_cfg_r.board_class == GEN4_WSF);
+wire ataxx_sel = (game_cfg_r.board_class == GEN4_ATAXX) || wsf_sel;
 
 logic [26:0] wr_gate_hi;
 always @(*) begin
 	case (game_cfg_r.board_class)
 		GEN3_LELANDI: wr_gate_hi = ADDR_EEPROM_REAL_HI;
 		GEN4_ATAXX:   wr_gate_hi = ADDR_EEPROM_REAL_HI_G4;
+		GEN4_WSF:     wr_gate_hi = ADDR_EEPROM_REAL_HI_G4;
 		default:      wr_gate_hi = ADDR_EEPROM_REAL_HI;
 	endcase
 end
@@ -1619,6 +1621,10 @@ reg  [7:0]  slave_rom_data_r;        // latched SDRAM byte
 
 // Line cache for the slave code fetch (rd1).
 wire slave_rom_stall;
+wire        slv_sd_req;
+wire [24:0] slv_sd_addr;
+wire  [7:0] slv_sd_data;
+wire        slv_sd_ack;
 // 2 KB direct-mapped; uncached, slave code fetches stalled on up to ~8% of cycles.
 rom_line_cache #(
 	.BASE       (leland_board_pkg::ADDR_SLAVE_BASE),
@@ -1634,11 +1640,62 @@ rom_line_cache #(
 	.cpu_data     (slave_rom_data_r),
 	.cpu_stall    (slave_rom_stall),
 
-	.sd_req       (sdram_rd1_req),
-	.sd_addr      (sdram_rd1_addr),
-	.sd_data      (sdram_rd1_data),
-	.sd_ack       (sdram_rd1_ack)
+	.sd_req       (slv_sd_req),
+	.sd_addr      (slv_sd_addr),
+	.sd_data      (slv_sd_data),
+	.sd_ack       (slv_sd_ack)
 );
+
+// WSF external sample DAC: its own small line cache, sharing the slave's SDRAM channel.
+wire        ext_req_w;
+wire [17:0] ext_addr_w;
+wire  [7:0] ext_data_w;
+wire        ext_stall_w;
+wire        ext_sd_req;
+wire [24:0] ext_sd_addr;
+wire        ext_sd_ack;
+wire  [7:0] ext_sd_data;
+
+rom_line_cache #(
+	.BASE       (leland_board_pkg::ADDR_EXTDAC_BASE),
+	.ADDR_WIDTH (18),
+	.INDEX_BITS (6)
+) ext_cache (
+	.clk_sys      (clk_sys),
+	.reset        (sdram_init),
+	.sdram_ready  (sdram_ready),
+
+	.cpu_req      (ext_req_w),
+	.cpu_addr     (ext_addr_w),
+	.cpu_data     (ext_data_w),
+	.cpu_stall    (ext_stall_w),
+
+	.sd_req       (ext_sd_req),
+	.sd_addr      (ext_sd_addr),
+	.sd_data      (ext_sd_data),
+	.sd_ack       (ext_sd_ack)
+);
+
+// One transaction at a time; the owner is fixed from grant until its ack.
+reg sd1_busy, sd1_ext;
+always @(posedge clk_sys) begin
+	if (sdram_init) begin
+		sd1_busy <= 1'b0;
+		sd1_ext  <= 1'b0;
+	end else if (!sd1_busy) begin
+		if (ext_sd_req)      begin sd1_busy <= 1'b1; sd1_ext <= 1'b1; end
+		else if (slv_sd_req) begin sd1_busy <= 1'b1; sd1_ext <= 1'b0; end
+	end else if (sdram_rd1_ack) begin
+		sd1_busy <= 1'b0;
+	end
+end
+
+assign sdram_rd1_req = sd1_busy && (sd1_ext ? ext_sd_req : slv_sd_req);
+assign sdram_rd1_addr = sd1_ext ? ext_sd_addr : slv_sd_addr;
+assign slv_sd_data = sdram_rd1_data;
+assign ext_sd_data = sdram_rd1_data;
+assign slv_sd_ack  = sdram_rd1_ack && sd1_busy && !sd1_ext;
+assign ext_sd_ack  = sdram_rd1_ack && sd1_busy && sd1_ext;
 
 
 //------------------------------------------------------------------
@@ -1773,6 +1830,7 @@ leland_sound sound(
 	.clk_sys(clk_sys),
 	.reset(reset | ~cpu_release),
 	.ataxx_mode(ataxx_sel),
+	.wsf_mode(wsf_sel),
 	.ce_8m(CE_8M),
 
 	.sound_ctrl_data(sound_ctrl_data),
@@ -1787,12 +1845,19 @@ leland_sound sound(
 	.rom_data(sound_rom_data_r),
 	.rom_stall(sound_rom_stall),
 
+	.ext_req(ext_req_w),
+	.ext_addr(ext_addr_w),
+	.ext_data(ext_data_w),
+	.ext_stall(ext_stall_w),
+
 	.audio_out(audio_out)
 );
 `else
 assign sound_response_data = 8'h00;
 assign sound_rom_req       = 1'b0;
 assign sound_rom_addr_w    = '0;
+assign ext_req_w           = 1'b0;
+assign ext_addr_w          = '0;
 assign audio_out           = 16'h0;
 `endif
 

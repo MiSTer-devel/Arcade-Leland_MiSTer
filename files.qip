@@ -101,6 +101,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/KF8253/KF8253.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/KF8253/kf8253_leland_bus.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/i186_periph.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/audio/leland_sound_board.sv
+set_global_assignment -name QIP_FILE rtl/jt51/hdl/jt51.qip
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/audio/leland_dac_mixer.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/audio/leland_sound.sv
 

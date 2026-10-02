@@ -20,6 +20,7 @@ module leland_sound(
 	input  logic        clk_sys,   // 48 MHz
 	input  logic        reset,     // board reset
 	input  logic        ataxx_mode, // Ataxx sound board variant (I/O-mapped peripherals, PCS5 DACs)
+	input  logic        wsf_mode,   // WSF variant (Indy Heat): YM2151 and external sample DAC
 	input  logic        ce_8m,     // ~8MHz-equivalent CE -- paces ONLY
 									// i186_periph's internal timer tick
 									// (dac9's real sample rate); every
@@ -39,6 +40,12 @@ module leland_sound(
 	output logic [19:0] rom_addr,   // byte address, 0-0xFFFFF (80186's own address space)
 	input  logic [7:0]  rom_data,
 	input  logic         rom_stall,
+
+	// --- External sample DAC ROM (WSF), same shape ---
+	output logic         ext_req,
+	output logic [17:0] ext_addr,
+	input  logic [7:0]  ext_data,
+	input  logic         ext_stall,
 
 	// --- Audio output ---
 	output logic signed [15:0] audio_out
@@ -245,6 +252,9 @@ wire [9:0]  dac9_sample;
 wire        dac9_wr;
 wire [6:0]  clock_active;
 wire        response_wr;
+wire        ym_we, ym_a0;
+wire [7:0]  ym_din, ym_dout;
+wire signed [15:0] ym_left, ym_right;
 
 // =====================================================================
 // Combinational-loop break, second boundary: leland_sound_board's win_hit/fresh_access
@@ -290,7 +300,10 @@ leland_sound_board board(
 	.mem_access(mem_access), .mem_ack(mem_ack), .mem_wr_en(mem_wr_en),
 	.mem_bytesel(mem_bytesel), .mem_d_io(mem_d_io),
 	.t0_tc_pulse(timer_tc_pulse[0]),
-	.pit_ce(pit_ce), .ataxx_mode(ataxx_mode),
+	.pit_ce(pit_ce), .ataxx_mode(ataxx_mode), .wsf_mode(wsf_mode),
+	.t1_tc_pulse(timer_tc_pulse[1]), .t1_state(t_control[1][1] ? t_control[1][12] : 1'b1),
+	.ym_we(ym_we), .ym_a0(ym_a0), .ym_din(ym_din), .ym_dout(ym_dout),
+	.ext_req(ext_req), .ext_addr(ext_addr), .ext_data(ext_data), .ext_stall(ext_stall),
 	.cmd_wr_data(cmd_wr_data), .cmd_wr_lo(cmd_wr_lo), .cmd_wr_hi(cmd_wr_hi),
 	.response_data(response_data), .response_wr(response_wr),
 	.control_data(sound_ctrl_data), .control_wr(sound_ctrl_wr),
@@ -308,7 +321,41 @@ leland_sound_board board(
 leland_dac_mixer mixer(
 	.clk(clk_sys), .reset(reset),
 	.dac_sample(dac_sample), .dac_vol(dac_vol), .dac9_sample(dac9_sample),
+	.ym_left(ym_left), .ym_right(ym_right),
 	.audio_out(audio_out));
+
+// =====================================================================
+// YM2151 (WSF only): 4 MHz chip clock, 2 MHz phase enable. A write is held until the next
+// phase tick so the chip's register logic samples it.
+// =====================================================================
+reg ym_phase;
+always @(posedge clk_sys or posedge reset) begin
+	if (reset) ym_phase <= 1'b0;
+	else if (pit_ce) ym_phase <= ~ym_phase;
+end
+wire ym_cen_p1 = pit_ce && ym_phase;
+
+reg       ym_wr_hold, ym_a0_r;
+reg [7:0] ym_din_r;
+always @(posedge clk_sys or posedge reset) begin
+	if (reset) begin
+		ym_wr_hold <= 1'b0;
+		ym_a0_r    <= 1'b0;
+		ym_din_r   <= 8'h00;
+	end else if (ym_we) begin
+		ym_wr_hold <= 1'b1;
+		ym_a0_r    <= ym_a0;
+		ym_din_r   <= ym_din;
+	end else if (ym_cen_p1) begin
+		ym_wr_hold <= 1'b0;
+	end
+end
+
+jt51 ym(
+	.rst(reset | ~wsf_mode), .clk(clk_sys), .cen(pit_ce), .cen_p1(ym_cen_p1),
+	.cs_n(1'b0), .wr_n(~ym_wr_hold), .a0(ym_a0_r), .din(ym_din_r), .dout(ym_dout),
+	.ct1(), .ct2(), .irq_n(), .sample(),
+	.left(ym_left), .right(ym_right), .xleft(), .xright());
 
 // =====================================================================
 // 80186's own memory: RAM (16 KB, mirrored x8 across 0x00000-0x1FFFF), self-contained
