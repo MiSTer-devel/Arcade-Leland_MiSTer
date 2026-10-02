@@ -31,7 +31,7 @@ slave_rom = (rom("e-302-33007-01.u151") + u152[:0x20000] + u153[:0x20000] +
                                        "e-302-33014-01.u158")) +
              bytes(0x20000) + u152[0x20000:] + u153[0x20000:])
 assert len(slave_rom) == 0x160000
-slave = pad(pad(slave_rom, 0x1C0000) + rom("e-302-33025-01.u8") + rom("e-302-33026-01.u9"), 0x200000)
+slave = pad(pad(slave_rom, 0x180000) + rom("e-302-33025-01.u8") + rom("e-302-33026-01.u9"), 0x200000)
 
 s_a = interleave(rom("e-302-33024-01.u6"), rom("e-302-33021-01.u3"))
 s_b = interleave(rom("e-302-33023-01.u5"), rom("e-302-33022-01.u4"))

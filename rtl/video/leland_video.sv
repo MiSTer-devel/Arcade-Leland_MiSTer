@@ -39,6 +39,7 @@ module leland_video
 	// Ataxx board: RAM tilemap (tile RAM) and xRGB-444 palette RAM read ports. With
 	// ataxx_mode low the colour RAM / PROM path above is used and these are idle.
 	input         ataxx_mode,
+	input         gfx_wide,   // 15-bit tile codes (256 KB planes); otherwise 14 bits
 	output [15:0] qram_addr,
 	input   [7:0] qram_data,
 	output [10:0] pal_addr,
@@ -375,30 +376,30 @@ end
 // Ataxx tile fetch (ataxx_mode): the tile code comes from the tile RAM and each tile
 // row is one 4-word burst from the board's repack (bytes plane0..plane5, then 2 pad).
 // A 1024-entry direct-mapped row cache keyed by {code, row-in-tile} skips the burst on
-// a hit. Entry = {valid, tag[6:0], plane0 .. plane5}.
+// a hit. Entry = {valid, tag[7:0], plane0 .. plane5}.
 //------------------------------------------------------------------
 reg  [7:0]  ax_lo;
-reg [13:0]  ax_code;
-wire [16:0] ax_idx  = {ax_code, fetch_riy};
+reg [14:0]  ax_code;
+wire [17:0] ax_idx  = {ax_code, fetch_riy};
 wire  [9:0] ax_cidx = ax_idx[9:0];
-wire  [6:0] ax_ctag = ax_idx[16:10];
+wire  [7:0] ax_ctag = ax_idx[17:10];
 wire [24:0] ax_row_addr = ADDR_GFXAX_BASE[24:0] + {2'b0, ax_idx, 3'b000};
 
 // Low tile byte at index, high byte at index | 0x4000 (MAME ataxx_get_tile_info)
 assign qram_addr = {fetch_row[6], (fetch_ph == FP_Q1), fetch_row[5:0], fetch_col};
 
-reg [55:0] axcache_mem [0:1023];
+reg [56:0] axcache_mem [0:1023];
 reg  [9:0] axcache_clear_idx;
 reg        axcache_wr_en;
 reg  [9:0] axcache_wr_addr;
-reg [55:0] axcache_wr_data;
-reg [55:0] axcache_rd_r;
-wire       ax_hit = axcache_rd_r[55] && (axcache_rd_r[54:48] == ax_ctag);
+reg [56:0] axcache_wr_data;
+reg [56:0] axcache_rd_r;
+wire       ax_hit = axcache_rd_r[56] && (axcache_rd_r[55:48] == ax_ctag);
 
 always @(posedge clk_sys) begin
 	if (reset) begin
 		axcache_clear_idx <= (axcache_clear_idx == 10'h3FF) ? axcache_clear_idx : (axcache_clear_idx + 10'd1);
-		axcache_mem[axcache_clear_idx] <= 56'd0;
+		axcache_mem[axcache_clear_idx] <= 57'd0;
 	end else begin
 		axcache_clear_idx <= 10'd0;
 		if (axcache_wr_en) axcache_mem[axcache_wr_addr] <= axcache_wr_data;
@@ -482,7 +483,7 @@ always @(posedge clk_sys) begin
 				fetch_ph <= FP_Q2;
 			end
 			FP_Q2: begin
-				ax_code  <= {qram_data[5:0], ax_lo};
+				ax_code  <= {qram_data[6] & gfx_wide, qram_data[5:0], ax_lo};
 				fetch_ph <= FP_GFX_LOOKUP;
 			end
 			FP_PROM_LOOKUP: begin

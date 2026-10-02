@@ -73,8 +73,9 @@ module leland_master_ataxx
 	input   [7:0] p1_joy, p2_joy,   // [4]=button [6]=start [7]=coin
 	input         service,
 
-	// WSF family (Indy Heat): banks 1-15, XROM, analog pedals, three players
+	// WSF family (Indy Heat, Brute Force): banks 1-15, XROM, analog pedals, three players
 	input         wsf_mode,
+	input         joy3_mode,        // three digital joysticks on ports 0x0D-0x0F (Brute Force)
 	input   [7:0] p3_joy,           // [4]=button [5]=button 2 [7]=coin
 	input   [7:0] p1_pedal, p2_pedal, p3_pedal
 );
@@ -299,7 +300,13 @@ wire [3:0] f_off = cpu_addr[3:0];
 wire [7:0] in0_ax = {~p2_joy[4], ~p2_joy[6], ~p1_joy[4], ~p1_joy[6],
 	~service, 1'b1, ~p2_joy[7], ~p1_joy[7]};
 wire [7:0] in0_ih = {~p1_joy[5], 3'b111, p3_joy[7], p2_joy[7], p1_joy[7], 1'b1};
-wire [7:0] in0 = wsf_mode ? in0_ih : in0_ax;
+wire [7:0] in0_bf = {~service, 3'b111, p3_joy[7], p1_joy[7], p2_joy[7], 1'b1};
+wire [7:0] in0 = joy3_mode ? in0_bf : wsf_mode ? in0_ih : in0_ax;
+
+// Brute Force player ports: right, left, down, up, buttons 1-2, start (bit 7 unused)
+wire [7:0] bf_p1 = {1'b1, ~p1_joy[6:0]};
+wire [7:0] bf_p2 = {1'b1, ~p2_joy[6:0]};
+wire [7:0] bf_p3 = {1'b1, ~p3_joy[6:0]};
 wire [7:0] in1 = {6'h3F, ~vblank, ~slave_halt_n};
 
 // Writes
@@ -386,9 +393,9 @@ always @(*) begin
 			case (cpu_addr[3:0])
 				4'h8, 4'hA: cpu_din = 8'h00;
 				4'h9:       cpu_din = pedal_result;
-				4'hD:       cpu_din = {7'h7F, ~p1_joy[4]};
-				4'hE:       cpu_din = {7'h7F, ~p2_joy[4]};
-				4'hF:       cpu_din = {~service, 6'h3F, ~p3_joy[4]};
+				4'hD:       cpu_din = joy3_mode ? bf_p2 : {7'h7F, ~p1_joy[4]};
+				4'hE:       cpu_din = joy3_mode ? bf_p1 : {7'h7F, ~p2_joy[4]};
+				4'hF:       cpu_din = joy3_mode ? bf_p3 : {~service, 6'h3F, ~p3_joy[4]};
 				default:    cpu_din = 8'hFF;
 			endcase
 		end

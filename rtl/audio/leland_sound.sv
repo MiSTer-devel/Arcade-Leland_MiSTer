@@ -43,7 +43,7 @@ module leland_sound(
 
 	// --- External sample DAC ROM (WSF), same shape ---
 	output logic         ext_req,
-	output logic [17:0] ext_addr,
+	output logic [18:0] ext_addr,
 	input  logic [7:0]  ext_data,
 	input  logic         ext_stall,
 

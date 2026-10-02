@@ -9,6 +9,7 @@ module leland_slave_ataxx
 	input         reset,
 	input         CE_6M,
 	input         wsf_mode,    // WSF family: 0x160000-byte ROM, banks up to 15 plus bit 5
+	input         slave_1mb,   // WSF family with a 1 MB ROM: bank register bit 5 is unused
 
 	output [20:0] rom_addr,
 	input   [7:0] rom_data,
@@ -90,11 +91,12 @@ assign slave_halt_n = halt_n;
 
 // Bank register (ataxx_slave_banksw_w): block at 0x10000*bank + 0x8000*data[4] (+0x100000*data[5]
 // when the ROM is larger than 1 MB); bank 0 and blocks past the end of the ROM (0x60000 bytes
-// for Ataxx, 0x160000 for the WSF family) map the window onto the raw image.
+// for Ataxx, 0x160000 for the WSF family, 0x100000 with slave_1mb) map the window onto the raw
+// image.
 reg [5:0] bank_reg;
 wire [3:0] bank = bank_reg[3:0];
-wire [5:0] block = {bank_reg[5] & wsf_mode, bank, bank_reg[4]};
-wire bank_raw = (bank == 4'd0) || (block >= (wsf_mode ? 6'd44 : 6'd12));
+wire [5:0] block = {bank_reg[5] & wsf_mode & ~slave_1mb, bank, bank_reg[4]};
+wire bank_raw = (bank == 4'd0) || (block >= (slave_1mb ? 6'd32 : wsf_mode ? 6'd44 : 6'd12));
 
 assign rom_addr = (in_banked & ~bank_raw) ? {block, cpu_addr[14:0]}
 	: {6'b0, cpu_addr};

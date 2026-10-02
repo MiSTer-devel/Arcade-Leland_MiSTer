@@ -4,7 +4,7 @@
 //============================================================================
 //  Leland-family board package: board/input enums, the 16-byte MRA header layout, the
 //  canonical SDRAM region layout (sized to the family maxima) and the per-game
-//  configuration table (Super Off-Road, Track-Pak, Pig Out).
+//  configuration table (Super Off-Road, Track-Pak, Pig Out, Ataxx, Indy Heat, Brute Force).
 //============================================================================
 
 package leland_board_pkg;
@@ -58,6 +58,8 @@ package leland_board_pkg;
 	localparam int FLAG_XROM_PRESENT   = 2;
 	localparam int FLAG_EXTDAC_PRESENT = 3;
 	localparam int FLAG_IN4_PORT       = 4; // fixed IN4 @ raw 0x7F (pigout 4th-player port)
+	localparam int FLAG_SLAVE_1MB      = 5; // WSF family: 1 MB slave ROM, bank register bit 5 unused
+	localparam int FLAG_GFX_WIDE       = 6; // Ataxx family: 256 KB gfx planes and 15-bit tile codes
 
 	//--------------------------------------------------------------
 	// Canonical SDRAM layout (post-header byte addresses), sized to the whole Leland
@@ -89,9 +91,9 @@ package leland_board_pkg;
 	localparam logic [26:0] ADDR_GFXROW_BASE = ADDR_GFXW_BASE + 27'h010000;
 
 	// Ataxx 6-plane repack (board_class GEN4_ATAXX): 8 bytes per tile row, index
-	// tile*8 + row, bytes = plane0..plane5 then 2 pad bytes. It sits right after the
-	// 0xC0000 bytes of raw planes, so the two layouts never coexist in one game.
-	localparam logic [26:0] ADDR_GFXAX_BASE  = ADDR_GFX_BASE + 27'h0C0000;
+	// tile*8 + row, bytes = plane0..plane5 then 2 pad bytes; up to 0x8000 tiles (0x200000
+	// bytes). It sits above the EEPROM image, clear of the raw planes (0x180000 at most).
+	localparam logic [26:0] ADDR_GFXAX_BASE  = ADDR_GFX_BASE + 27'h400000;
 
 	localparam logic [26:0] ADDR_PROM_BASE   = 27'h600000; // bg_prom (gen1-3)
 	localparam logic [26:0] PROM_MAX         = 27'h040000; // 256 KB reserved
@@ -103,8 +105,8 @@ package leland_board_pkg;
 
 	// Ext DAC samples (GEN4_WSF) live in the tail of the slave region so they are read through
 	// the slave's SDRAM channel; a WSF slave ROM is at most 0x160000 bytes.
-	localparam logic [26:0] ADDR_EXTDAC_BASE = 27'h2C0000;
-	localparam logic [26:0] EXTDAC_MAX       = 27'h040000; // 256 KB reserved
+	localparam logic [26:0] ADDR_EXTDAC_BASE = 27'h280000;
+	localparam logic [26:0] EXTDAC_MAX       = 27'h080000; // 512 KB reserved
 
 	localparam logic [26:0] ADDR_EEPROM_BASE = 27'h700000; // EEPROM default image
 	localparam logic [26:0] EEPROM_MAX       = 27'h001000; // 4 KB reserved
@@ -139,7 +141,7 @@ package leland_board_pkg;
 	endfunction
 
 	//--------------------------------------------------------------
-	// Per-game configuration table, indexed by game_id (header byte 3). All three games
+	// Per-game configuration table, indexed by game_id (header byte 3). The Leland games
 	// share the same master/slave bank tables (MAME's offroad_bankswitch is shared); only
 	// the I/O bases, input scheme and flags differ per row.
 	//--------------------------------------------------------------
@@ -151,12 +153,13 @@ package leland_board_pkg;
 		logic [7:0]     mvram_base; // leland_mvram_port_r/w window base
 	} game_cfg_t;
 
-	localparam int NUM_GAMES = 5;
+	localparam int NUM_GAMES = 6;
 	localparam int GAME_OFFROAD  = 0;
 	localparam int GAME_OFFROADT = 1;
 	localparam int GAME_PIGOUT   = 2;
 	localparam int GAME_ATAXX    = 3;
 	localparam int GAME_INDYHEAT = 4;
+	localparam int GAME_BRUTFORC = 5;
 
 	function automatic game_cfg_t game_cfg(input int game_id);
 		game_cfg_t cfg;
@@ -193,6 +196,14 @@ package leland_board_pkg;
 				board_class:  GEN4_WSF,
 				input_scheme: WHEELS3_PEDALS3,
 				flags:        (8'd1 << FLAG_EEPROM_93C56) | (8'd1 << FLAG_XROM_PRESENT) | (8'd1 << FLAG_EXTDAC_PRESENT),
+				io_base:      8'h00,
+				mvram_base:   8'h00
+			};
+			GAME_BRUTFORC: cfg = '{
+				board_class:  GEN4_WSF,
+				input_scheme: JOY3_DIGITAL,
+				flags:        (8'd1 << FLAG_EEPROM_93C56) | (8'd1 << FLAG_XROM_PRESENT) | (8'd1 << FLAG_EXTDAC_PRESENT)
+				            | (8'd1 << FLAG_SLAVE_1MB) | (8'd1 << FLAG_GFX_WIDE),
 				io_base:      8'h00,
 				mvram_base:   8'h00
 			};

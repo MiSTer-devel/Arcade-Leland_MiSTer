@@ -512,6 +512,9 @@ wire [7:0] io_base_r    = game_cfg_r.io_base;
 wire [7:0] mvram_base_r = game_cfg_r.mvram_base;
 wire       dual_io_window_r = game_cfg_r.flags[leland_board_pkg::FLAG_DUAL_IO_WINDOW];
 wire       in4_port_en_r    = game_cfg_r.flags[leland_board_pkg::FLAG_IN4_PORT];
+wire       slave_1mb_r      = game_cfg_r.flags[leland_board_pkg::FLAG_SLAVE_1MB];
+wire       gfx_wide_r       = game_cfg_r.flags[leland_board_pkg::FLAG_GFX_WIDE];
+wire       joy3_sel         = (game_cfg_r.input_scheme == leland_board_pkg::JOY3_DIGITAL);
 leland_board_pkg::input_scheme_e input_scheme_r;
 assign input_scheme_r = game_cfg_r.input_scheme;
 
@@ -791,19 +794,19 @@ always @(posedge clk_sys) begin
 end
 
 //------------------------------------------------------------------
-// Ataxx gfx repack: packs the six plane files (raw at ADDR_GFX_BASE + n*0x20000) into
-// 8-byte tile rows at ADDR_GFXAX_BASE (plane0..plane5, then 2 pad bytes), so
-// leland_video fetches a whole row with one 4-word burst. Per tile: six burst reads
-// (one plane each, byte r = row r), then three word writes per row (the pad word is
-// left unwritten). It borrows rd2 and the write channel like the gen 1-3 repack above,
-// which is skipped for this board.
+// Ataxx gfx repack: packs the six plane files (raw at ADDR_GFX_BASE + n*0x20000, or
+// n*0x40000 with gfx_wide_r) into 8-byte tile rows at ADDR_GFXAX_BASE (plane0..plane5,
+// then 2 pad bytes), so leland_video fetches a whole row with one 4-word burst. Per
+// tile: six burst reads (one plane each, byte r = row r), then three word writes per
+// row (the pad word is left unwritten). It borrows rd2 and the write channel like the
+// gen 1-3 repack above, which is skipped for this board.
 //------------------------------------------------------------------
 typedef enum logic [2:0] {
 	RX_IDLE, RX_RD_REQ, RX_RD_WAIT, RX_WR_REQ, RX_WR_WAIT, RX_DONE
 } rx_state_e;
 
 rx_state_e rx_st;
-reg [13:0] rx_tile;
+reg [14:0] rx_tile;
 reg  [2:0] rx_plane;
 reg  [2:0] rx_row;
 reg  [1:0] rx_w;
@@ -829,7 +832,7 @@ end
 always @(posedge clk_sys) begin
 	if (sdram_init) begin
 		rx_st       <= RX_IDLE;
-		rx_tile     <= 14'd0;
+		rx_tile     <= 15'd0;
 		rx_plane    <= 3'd0;
 		rx_row      <= 3'd0;
 		rx_w        <= 2'd0;
@@ -841,7 +844,7 @@ always @(posedge clk_sys) begin
 			RX_IDLE: if (ataxx_sel && dl_settled && !wr_pending) rx_st <= RX_RD_REQ;
 
 			RX_RD_REQ: begin
-				rx_rd_addr_r <= ADDR_GFX_BASE[24:0] + {5'b0, rx_plane, 17'b0} + {8'b0, rx_tile, 3'b000};
+				rx_rd_addr_r <= ADDR_GFX_BASE[24:0] + {4'b0, gfx_wide_r ? {rx_plane, 18'b0} : {1'b0, rx_plane, 17'b0}} + {7'b0, rx_tile, 3'b000};
 				rx_rd_req_r  <= 1'b1;
 				rx_st        <= RX_RD_WAIT;
 			end
@@ -866,7 +869,7 @@ always @(posedge clk_sys) begin
 			end
 
 			RX_WR_REQ: begin
-				rx_wr_addr_r <= ADDR_GFXAX_BASE[24:0] + {5'b0, rx_tile, rx_row, 3'b000} + {22'b0, rx_w, 1'b0};
+				rx_wr_addr_r <= ADDR_GFXAX_BASE[24:0] + {4'b0, rx_tile, rx_row, 3'b000} + {22'b0, rx_w, 1'b0};
 				rx_wr_lo     <= rx_sel_lo[{rx_row, 3'b000} +: 8];
 				rx_wr_hi     <= rx_sel_hi[{rx_row, 3'b000} +: 8];
 				rx_wr_req_r  <= 1'b1;
@@ -884,11 +887,11 @@ always @(posedge clk_sys) begin
 						rx_st  <= RX_WR_REQ;
 					end else begin
 						rx_row <= 3'd0;
-						if (rx_tile == 14'd16383) begin
+						if (rx_tile == (gfx_wide_r ? 15'd32767 : 15'd16383)) begin
 							rx_st   <= RX_DONE;
 							rx_done <= 1'b1;
 						end else begin
-							rx_tile  <= rx_tile + 14'd1;
+							rx_tile  <= rx_tile + 15'd1;
 							rx_plane <= 3'd0;
 							rx_st    <= RX_RD_REQ;
 						end
@@ -1455,6 +1458,7 @@ leland_master_ataxx master_ax
 	.CE_6M(CE_6M),
 
 	.wsf_mode(wsf_sel),
+	.joy3_mode(joy3_sel),
 	.p3_joy(p3_joy),
 	.p1_pedal(p1_pedal), .p2_pedal(p2_pedal), .p3_pedal(p3_pedal),
 
@@ -1647,7 +1651,7 @@ rom_line_cache #(
 
 // WSF external sample DAC: its own small line cache, sharing the slave's SDRAM channel.
 wire        ext_req_w;
-wire [17:0] ext_addr_w;
+wire [18:0] ext_addr_w;
 wire  [7:0] ext_data_w;
 wire        ext_stall_w;
 wire        ext_sd_req;
@@ -1657,7 +1661,7 @@ wire  [7:0] ext_sd_data;
 
 rom_line_cache #(
 	.BASE       (leland_board_pkg::ADDR_EXTDAC_BASE),
-	.ADDR_WIDTH (18),
+	.ADDR_WIDTH (19),
 	.INDEX_BITS (6)
 ) ext_cache (
 	.clk_sys      (clk_sys),
@@ -1766,6 +1770,7 @@ leland_slave_ataxx slave_ax
 	.CE_6M(CE_6M),
 
 	.wsf_mode(wsf_sel),
+	.slave_1mb(slave_1mb_r),
 	.rom_addr(slave_rom_addr_a),
 	.rom_data(slave_rom_data_r),
 
@@ -1884,6 +1889,7 @@ leland_video video
 	.cram_data(cram_dout_vid),
 
 	.ataxx_mode(ataxx_sel),
+	.gfx_wide(gfx_wide_r),
 	.qram_addr(qram_addr_vid),
 	.qram_data(qram_dout_vid),
 	.pal_addr(pal_addr_vid),

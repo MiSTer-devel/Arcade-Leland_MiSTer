@@ -32,9 +32,10 @@
 		<part repeat="0x20000">00</part>
 		<part name="e-302-33008-01.u152" crc="ad40e4e2" offset="0x20000" length="0x20000"/>
 		<part name="e-302-33009-01.u153" crc="1e3803f7" offset="0x20000" length="0x20000"/>
-		<part repeat="0x60000">00</part>
+		<part repeat="0x20000">00</part>
 		<part name="e-302-33025-01.u8" crc="9f16e5b6" length="0x20000"/>
 		<part name="e-302-33026-01.u9" crc="0dc8f488" length="0x20000"/>
+		<part repeat="0x40000">00</part>
 
 		<part repeat="0x20000">00</part>
 		<interleave output="16">

@@ -75,7 +75,7 @@ module leland_sound_board(
 	output logic [7:0]  ym_din,
 	input  logic [7:0]  ym_dout,
 	output logic         ext_req,
-	output logic [17:0] ext_addr,
+	output logic [18:0] ext_addr,
 	input  logic [7:0]  ext_data,
 	input  logic         ext_stall,
 
@@ -294,7 +294,7 @@ wire [15:0] ext_merge_mask = (cpu_bytesel == 2'b11) ? 16'hFFFF : (cpu_bytesel ==
 reg        ext_active;
 reg [19:0] ext_start, ext_stop;
 reg        ext_req_r;
-reg [17:0] ext_addr_r;
+reg [18:0] ext_addr_r;
 wire       ext_done = ext_req_r && !ext_stall;
 wire       ext_trigger = wsf_mode && t1_tc_pulse && t1_state && ext_active && (ext_start < ext_stop) && !ext_req_r;
 assign ext_req  = ext_req_r;
@@ -303,10 +303,10 @@ assign ext_addr = ext_addr_r;
 always_ff @(posedge clk or posedge reset) begin
 	if (reset) begin
 		ext_req_r  <= 1'b0;
-		ext_addr_r <= 18'h0;
+		ext_addr_r <= 19'h0;
 	end else if (ext_trigger) begin
 		ext_req_r  <= 1'b1;
-		ext_addr_r <= ext_start[17:0];
+		ext_addr_r <= ext_start[18:0];
 	end else if (ext_done) begin
 		ext_req_r  <= 1'b0;
 	end
