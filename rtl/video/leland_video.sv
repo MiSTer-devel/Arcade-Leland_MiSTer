@@ -236,6 +236,14 @@ reg [8:0] walk_vc;
 reg [8:0] row_resync_vc_r;
 reg       row_resync_pending;
 
+// A scroll change makes everything queued or in flight stale: the tiles were fetched with
+// the old scroll, and the HUD split switches it mid-frame. The queue is emptied and the
+// fetch in flight is dropped when it arrives, so the producer refetches from the live
+// position with the new scroll.
+reg [15:0] scroll_x_q, scroll_y_q;
+reg        flush_pend;
+reg        fetch_stale;
+
 wire [11:0] fetch_tile_code = {gfxbank[5:4], fetch_row[7:6], prom_byte_next};
 
 // SDRAM addresses of this tile's PROM byte and packed gfx row. gfxbank[3]
@@ -422,7 +430,7 @@ assign fetch_busy = (fetch_ph != FP_IDLE);
 // covering hc = 0 .. 7-fine, then 40 more from hc = 8-fine. The extra pop at
 // hc == 0 picks up that partial tile; when fine == 0 hc == 0 is already a tile
 // boundary and pops once.
-wire fifo_push    = ((fetch_ph == FP_GFXROW_WAIT) && sdram_rd2_ack) || (fetch_ph == FP_GFXCACHED);
+wire fifo_push    = (((fetch_ph == FP_GFXROW_WAIT) && sdram_rd2_ack) || (fetch_ph == FP_GFXCACHED)) && !fetch_stale;
 wire fifo_pop_req = ce_pix && ((col_in_tile == 3'd0) || (hc == 10'd0)) && (hc < H_ACTIVE);
 wire fifo_pop     = fifo_pop_req && rbuf_has_data;
 
@@ -437,6 +445,8 @@ always @(posedge clk_sys) begin
 		axcache_wr_en    <= 1'b0;
 		row_resync_vc_r    <= 9'd0;
 		row_resync_pending <= 1'b1;
+		flush_pend         <= 1'b0;
+		fetch_stale        <= 1'b0;
 	end else begin
 		gfxcache_wr_en   <= 1'b0;
 		axcache_wr_en    <= 1'b0;
@@ -475,6 +485,19 @@ always @(posedge clk_sys) begin
 		else if (!fifo_push && fifo_pop) rbuf_count <= rbuf_count - 4'd1;
 		if (fifo_push) rbuf_wr <= rbuf_wr + 3'd1;
 		if (fifo_pop)  rbuf_rd <= rbuf_rd + 3'd1;
+
+		// Flush on a cycle with no push or pop so the counters are not updated twice
+		scroll_x_q <= scroll_x;
+		scroll_y_q <= scroll_y;
+		if (fetch_ph == FP_IDLE) fetch_stale <= 1'b0;
+		if (flush_pend && !fifo_push && !fifo_pop) begin
+			flush_pend         <= 1'b0;
+			rbuf_count         <= 4'd0;
+			rbuf_wr            <= rbuf_rd;
+			row_resync_pending <= 1'b1;
+			if (fetch_ph != FP_IDLE) fetch_stale <= 1'b1;
+		end
+		if ((scroll_x != scroll_x_q) || (scroll_y != scroll_y_q)) flush_pend <= 1'b1;
 
 		case (fetch_ph)
 			FP_Q0: fetch_ph <= FP_Q1;

@@ -96,6 +96,8 @@ sim/*.png
 sim/*.ppm
 sim/*.vstf
 sim/*.lua
+!sim/hud_mame.lua
+sim/hud_runs/
 sim/*.tcl
 sim/*_result.txt
 sim/*_results.txt
