@@ -62,11 +62,11 @@
 	</rom>
 
 	<!--
-	  Buttons are ordered player controls, then coin, then start: Button 1, Button 2, Coin,
-	  Start. Players 2 and 3 use the second and third controllers. The operator menu is
-	  opened from the OSD "Service Menu".
+	  Buttons are ordered player controls, then coin, then start. Button 1 punches or kicks
+	  depending on the stick direction and button 2 dives. Players 2 and 3 use the second
+	  and third controllers. The operator menu is opened from the OSD "Service Menu".
 	-->
-	<buttons names="Button 1,Button 2,Coin,Start"></buttons>
+	<buttons names="Punch/Kick,Dive,Coin,Start"></buttons>
 
 	<nvram index="4" size="256"/>
 </misterromdescription>

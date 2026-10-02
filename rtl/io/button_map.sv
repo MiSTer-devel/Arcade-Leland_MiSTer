@@ -6,7 +6,8 @@
 //   board layout: [4]=button 1 (Nitro/Jump/Place)  [5]=button 2 or Off-Road coin
 //                 [6]=start or Gas                 [7]=coin or Off-Road Menu Enter
 //   Off-Road / Indy Heat: Gas, Nitro, Menu Enter, Coin
-//   Pig Out, Brute Force: Jump/Button 1, Throw/Button 2, Coin, Start
+//   Pig Out:              Jump, Throw, Coin, Start
+//   Brute Force:          Punch/Kick, Dive, Coin, Start
 //   Ataxx:                Place, Coin, Start
 // Menu Enter also comes out separately: it acts as player 3's Nitro in the service menus.
 
