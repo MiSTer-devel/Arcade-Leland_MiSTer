@@ -121,15 +121,15 @@ always @(posedge clk_sys) begin
 	ce_186_cnt <= (ce_186_cnt == 3'd5) ? 3'd0 : ce_186_cnt + 1'd1;
 end
 
-// Pixel clock: 7.159090 MHz from 48 MHz
-reg [15:0] pix_acc = 16'd0; // initialised so simulators do not start with X
+// Pixel clock: 14.318181 MHz / 2 from 48 MHz, as the ratio 14318181 / 96000000
+reg [26:0] pix_acc = 27'd0; // initialised so simulators do not start with X
 reg        ce_pix_r;
 always @(posedge clk_sys) begin
-	if (pix_acc + 16'd7159 >= 16'd48000) begin
-		pix_acc  <= pix_acc + 16'd7159 - 16'd48000;
+	if (pix_acc + 27'd14318181 >= 27'd96000000) begin
+		pix_acc  <= pix_acc + 27'd14318181 - 27'd96000000;
 		ce_pix_r <= 1;
 	end else begin
-		pix_acc  <= pix_acc + 16'd7159;
+		pix_acc  <= pix_acc + 27'd14318181;
 		ce_pix_r <= 0;
 	end
 end
@@ -1363,20 +1363,17 @@ wire [15:0] scroll_x_m, scroll_y_m;
 wire  [7:0] gfxbank_m;
 
 //------------------------------------------------------------------
-// Phase-locked CPU / video release
+// CPU / video release
 //
-// MAME releases the master Z80 at raster position vpos=240, hpos=0 (the first line
-// of vblank), identically on cold boot and soft reset. To reproduce that fixed phase
-// the release has two stages:
-//   video_release: leland_video's counters are held at 0 until the ROM download has
-//     finished (sdram_ready, dl_settled, repack_done, on a ce_z80_cnt==0 boundary)
-//     and then start counting from a fixed origin.
-//   cpu_release: the CPUs start on the first ce_z80_cnt==0 after the rising edge of
-//     VBlank (vc==240, hc==0), which happens once per frame. The remaining offset
-//     from MAME's exact hpos=0 is small and fixed (under one ce_z80_cnt period).
-// The SDRAM refresh counter is not aligned to this release (sdram.sv has no port to
-// restart it), so refresh-vs-fetch collisions remain a possible source of run-to-run
-// variation.
+// On the board the master Z80's reset comes from an analog power-on circuit and the reset
+// switch, with no relation to the raster, so the CPUs start at an arbitrary raster position.
+// The raster counters here run freely from power-up and the CPUs are released as soon as the
+// ROM download has finished, wherever the beam happens to be. That makes the start phase
+// (and the games' timing-driven random numbers) depend on when the load completes, as it
+// does on hardware, rather than on a fixed convention.
+//   video_release: leland_video's fetch pipeline waits for the ROM download to finish
+//     (sdram_ready, dl_settled, repack_done, on a ce_z80_cnt==0 boundary).
+//   cpu_release: the CPUs start on the next ce_z80_cnt==0 after that.
 //------------------------------------------------------------------
 reg video_release;
 always @(posedge clk_sys) begin
@@ -1392,22 +1389,11 @@ always @(posedge clk_sys) begin
 end
 
 reg cpu_release;
-reg cpu_release_pending; // latched VBlank rising edge (vc==240 && hc==0), awaiting ce_z80_cnt==0
-reg vblank_prev;
 always @(posedge clk_sys) begin
-	if (reset || sdram_init) begin
-		cpu_release         <= 1'b0;
-		cpu_release_pending <= 1'b0;
-		vblank_prev         <= 1'b0;
-	end else begin
-		vblank_prev <= VBlank;
-		if (video_release && !cpu_release) begin
-			if (VBlank && !vblank_prev)
-				cpu_release_pending <= 1'b1;
-			if ((cpu_release_pending || (VBlank && !vblank_prev)) && (ce_z80_cnt == 3'd0))
-				cpu_release <= 1'b1;
-		end
-	end
+	if (reset || sdram_init)
+		cpu_release <= 1'b0;
+	else if (video_release && !cpu_release && (ce_z80_cnt == 3'd0))
+		cpu_release <= 1'b1;
 end
 
 // Master <-> sound-board control/command latch wires. Port 0xF0 doubles as
@@ -1878,7 +1864,8 @@ assign audio_out           = 16'h0;
 leland_video video
 (
 	.clk_sys(clk_sys),
-	.reset(reset | ~video_release), // phase-locked video release -- see video_release/cpu_release above
+	.reset(reset | ~video_release), // fetch pipeline waits for the load -- see video_release/cpu_release above
+	.reset_cnt(sdram_init),         // raster counters free-run
 	.ce_pix(ce_pix),
 
 	.HBlank(HBlank),

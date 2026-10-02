@@ -228,7 +228,7 @@ end
 leland_video dut
 (
 	.clk_sys(clk_sys),
-	.reset(reset),
+	.reset(reset), .reset_cnt(reset),
 	.ce_pix(ce_pix),
 
 	.HBlank(HBlank), .HSync(HSync), .VBlank(VBlank), .VSync(VSync),

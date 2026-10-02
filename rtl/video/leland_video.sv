@@ -20,6 +20,7 @@ module leland_video
 (
 	input         clk_sys,
 	input         reset,
+	input         reset_cnt,  // raster counters: they keep running across game resets
 	input         ce_pix,     // pixel clock enable (~7.16 MHz from 48 MHz)
 
 	output reg    HBlank,
@@ -97,7 +98,7 @@ reg  [9:0] hc;   // horizontal pixel counter
 reg  [8:0] vc;   // vertical line counter
 
 always @(posedge clk_sys) begin
-	if (reset) begin
+	if (reset_cnt) begin
 		hc <= 0;
 		vc <= 0;
 	end else if (ce_pix) begin

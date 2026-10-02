@@ -19,7 +19,7 @@
 module leland_board_ax_tb;
 
 localparam CLK_PERIOD = 20.83;
-localparam IMG_LEN = 7340304;
+localparam IMG_MAX = 7340304; // the largest image (Ataxx family); others are 128 bytes shorter
 
 reg clk_sys = 0;
 always #(CLK_PERIOD/2) clk_sys = ~clk_sys;
@@ -133,7 +133,10 @@ end
 
 always @(p1_joy_r) $display("JOY t=%0t p1_joy_r=%02x in0=%02x", $time, p1_joy_r, dut.master_ax.in0);
 
-reg [7:0] img [0:IMG_LEN-1];
+reg [7:0] img [0:IMG_MAX-1];
+integer IMG_LEN;
+string img_name;
+longint unsigned phase_ns;
 integer fd, rd_count, k;
 
 task ioctl_write_byte(input [26:0] addr, input [7:0] data);
@@ -149,15 +152,18 @@ task ioctl_write_byte(input [26:0] addr, input [7:0] data);
 endtask
 
 initial begin
-	fd = $fopen("ataxx_image.bin", "rb");
+	if (!$value$plusargs("IMG=%s", img_name)) img_name = "ataxx_image.bin";
+	if (!$value$plusargs("PHASE_NS=%d", phase_ns)) phase_ns = 0;
+	fd = $fopen(img_name, "rb");
 	if (fd == 0) begin
 		$display("ERROR: sim/ataxx_image.bin missing (python make_ataxx_image.py ataxx.zip ataxx_image.bin)");
 		$finish;
 	end
 	rd_count = $fread(img, fd);
 	$fclose(fd);
-	if (rd_count != IMG_LEN) begin
-		$display("ERROR: image is %0d bytes, expected %0d", rd_count, IMG_LEN);
+	IMG_LEN = rd_count;
+	if (rd_count != IMG_MAX && rd_count != IMG_MAX - 128) begin
+		$display("ERROR: image is %0d bytes, expected %0d or %0d", rd_count, IMG_MAX, IMG_MAX - 128);
 		$finish;
 	end
 
@@ -166,6 +172,7 @@ initial begin
 	repeat (10) @(posedge clk_sys);
 	sdram_init = 0;
 	repeat (5) @(posedge clk_sys);
+	#(phase_ns); // start the load at a chosen raster phase
 
 	ioctl_download = 1'b1;
 	@(posedge clk_sys);

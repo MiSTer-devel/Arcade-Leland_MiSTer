@@ -131,11 +131,6 @@ leland_board #(.USE_ALTDDIO(1'b0), .DL_SETTLE_CYCLES(24'd10000)) dut
 	.p1_pedal(8'h00), .p2_pedal(8'h00), .p3_pedal(8'h00),
 
 	.service(1'b0),
-	.free_play(1'b0),
-
-	// Debug overlay defaults off in sim -- tb doesn't exercise
-	// the render path, only avoids leaving the port undriven.
-	.show_overlay(1'b0),
 
 	.audio_out(audio_out)
 );
@@ -3446,6 +3441,11 @@ initial begin
 	repeat (10) @(posedge clk_sys);
 	sdram_init = 0;
 	repeat (5) @(posedge clk_sys);
+	begin : phase_delay
+		longint unsigned phase_ns;
+		if (!$value$plusargs("PHASE_NS=%d", phase_ns)) phase_ns = 0;
+		#(phase_ns); // start the load at a chosen raster phase
+	end
 
 `ifdef PIGOUT_ROMS
 	//==================================================================
