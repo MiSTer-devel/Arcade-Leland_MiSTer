@@ -53,22 +53,6 @@ buttons it uses, so the OSD mapping never asks for an unused one. Each MRA carri
 After updating from an earlier release, re-run **Define joystick buttons** in the OSD: the order
 changed for every game.
 
-## Ataxx
-
-Ataxx uses a different board generation (80186 sound with a peripheral window in I/O space,
-tilemap video from RAM, 93C56 EEPROM) and has its own set of controls. The cursor is moved
-by the game's trackball, which the core drives from a mouse or trackball (player 1, both axes;
-left click is button 1), the analog stick, the D-pad (steps at a fixed rate, as MAME does for
-digital input) or a spinner (X axis only). Its EEPROM is 256 bytes, so its MRA uses
-`<nvram index="4" size="256"/>`.
-
-## Indy Heat
-
-Indy Heat is the same board generation as Ataxx with a different sound board: a YM2151 music chip
-(the jt51 core, a submodule) and an external sample DAC. Steering and Nitro work for three players
-on controllers 1 to 3, one wheel and one Nitro button each, as on the cabinet (Red, Yellow and Blue
-wheels); the gas pedal is a digital button.
-
 ## Service menu
 
 Choose **Service Menu** in the OSD to open the operator menu. The core presses
@@ -123,6 +107,8 @@ sound board and the full board. See `sim/README.md`.
 - MAME's `leland.cpp`, `leland_m.cpp`, `leland_v.cpp` and `leland_a.cpp`, used
   as reference (not redistributed).
 - [tv80](https://github.com/hutch31/tv80): Z80 core (MIT), submodule in `rtl/tv80`.
+- [jotego/jt51](https://github.com/jotego/jt51): YM2151 core for the Indy Heat sound
+  board (GPLv3), submodule in `rtl/jt51`.
 - [jamieiles/80x86](rtl/s80x86/README_VENDORING.md): 8086/80186 core for the
   sound CPU (GPLv3), vendored.
 - [KF8253](rtl/KF8253/README_UPSTREAM.md): 8253 PIT core.
