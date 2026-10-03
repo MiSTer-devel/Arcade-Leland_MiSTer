@@ -55,7 +55,7 @@ always @(posedge clk) begin
     else if(busy) begin
         if(delay_count==0) begin
             if(game) begin
-                idx=(saved_addr-ADDR_GFXAX_BASE)>>3;
+                idx=(saved_addr-ADDR_GFX_BASE)>>3;
                 d0<={gfx[262144+idx],gfx[idx]};
                 d1<={gfx[786432+idx],gfx[524288+idx]};
                 d2<={gfx[1310720+idx],gfx[1048576+idx]};

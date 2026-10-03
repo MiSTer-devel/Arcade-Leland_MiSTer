@@ -203,7 +203,7 @@ initial begin
 end
 
 // Repack check: raw plane bytes versus the packed rows, once the repack finishes
-reg rx_done_d = 1'b0;
+reg repack_done_d = 1'b0;
 integer rt, rr, rp, rtile, rstride;
 reg [15:0] rw;
 function automatic [7:0] bank3_byte(input [22:0] rel);
@@ -214,20 +214,17 @@ function automatic [7:0] bank3_byte(input [22:0] rel);
 	end
 endfunction
 always @(posedge clk_sys) begin
-	rx_done_d <= dut.rx_done;
-	if (dut.rx_done && !rx_done_d) begin
-		$display("=== repack done t=%0t ===", $time);
+	repack_done_d <= dut.repack_done;
+	if (dut.repack_done && !repack_done_d) begin
+		$display("=== gfx rows ready t=%0t ===", $time);
 		rstride = dut.gfx_wide_r ? 23'h40000 : 23'h20000;
 		for (rt = 0; rt < 4; rt = rt + 1)
 			for (rr = 0; rr < 8; rr = rr + 1) begin
 				rtile = (rt == 0) ? 100 : (rt == 1) ? 2000 : (rt == 2) ? 12345 : 30000;
 				if (rt < 3 || dut.gfx_wide_r) begin
-					$write("RPK tile=%0d row=%0d raw:", rtile, rr);
+					$write("RPK tile=%0d row=%0d packed:", rtile, rr);
 					for (rp = 0; rp < 6; rp = rp + 1)
-						$write(" %02x", bank3_byte(rp * rstride + rtile * 8 + rr));
-					$write("  packed:");
-					for (rp = 0; rp < 6; rp = rp + 1)
-						$write(" %02x", bank3_byte(23'h400000 + (rtile * 8 + rr) * 8 + rp));
+						$write(" %02x", bank3_byte((rtile * 8 + rr) * 8 + rp));
 					$write("\n");
 				end
 			end

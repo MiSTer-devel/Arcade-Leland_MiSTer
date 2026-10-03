@@ -34,13 +34,19 @@
 			<part name="e-302-31004-01.u16" crc="f2bdff48" length="0x20000" map="10"/>
 		</interleave>
 
-		<part name="e-302-31006-01.u98"  crc="59d0f2ae" length="0x20000"/>
-		<part name="e-302-31007-01.u99"  crc="6ab7db25" length="0x20000"/>
-		<part name="e-302-31008-01.u100" crc="2352849e" length="0x20000"/>
-		<part name="e-302-31009-01.u101" crc="4c31e02b" length="0x20000"/>
-		<part name="e-302-31010-01.u102" crc="a951228c" length="0x20000"/>
-		<part name="e-302-31011-01.u103" crc="ed326164" length="0x20000"/>
-		<part repeat="0x240000">00</part>
+		<!-- Graphics planes byte-interleaved into 8-byte tile rows (plane0..plane5, then 2 pad
+		     bytes), the layout the video reads directly; plane 0 is repeated for the pad lanes. -->
+		<interleave output="64">
+			<part name="e-302-31006-01.u98" crc="59d0f2ae" length="0x20000" map="00000001"/>
+			<part name="e-302-31007-01.u99" crc="6ab7db25" length="0x20000" map="00000010"/>
+			<part name="e-302-31008-01.u100" crc="2352849e" length="0x20000" map="00000100"/>
+			<part name="e-302-31009-01.u101" crc="4c31e02b" length="0x20000" map="00001000"/>
+			<part name="e-302-31010-01.u102" crc="a951228c" length="0x20000" map="00010000"/>
+			<part name="e-302-31011-01.u103" crc="ed326164" length="0x20000" map="00100000"/>
+			<part name="e-302-31006-01.u98" crc="59d0f2ae" length="0x20000" map="01000000"/>
+			<part name="e-302-31006-01.u98" crc="59d0f2ae" length="0x20000" map="10000000"/>
+		</interleave>
+		<part repeat="0x200000">00</part>
 
 		<part name="eeprom-ataxx.bin" crc="989cdb8c" length="0x100"/>
 	</rom>

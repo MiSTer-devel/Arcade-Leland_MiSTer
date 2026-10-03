@@ -29,7 +29,13 @@ sound = pad(bytes(0x20000) + s_a + s_b + bytes(0x20000) + s_b, 0x100000)
 
 gfx_names = ["e-302-31006-01.u98", "e-302-31007-01.u99", "e-302-31008-01.u100",
              "e-302-31009-01.u101", "e-302-31010-01.u102", "e-302-31011-01.u103"]
-gfx = pad(b"".join(rom(n) for n in gfx_names), 0x300000)
+# 8-byte tile rows, as the MRA's 64-bit interleave lays them down: plane0..plane5 on lanes 0-5,
+# plane 0 repeated on the two pad lanes
+planes = [rom(n) for n in gfx_names]
+rows = bytearray(8 * len(planes[0]))
+for lane in range(8):
+    rows[lane::8] = planes[lane if lane < 6 else 0]
+gfx = pad(bytes(rows), 0x300000)
 
 eeprom = rom("eeprom-ataxx.bin")
 

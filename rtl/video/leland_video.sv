@@ -382,7 +382,7 @@ end
 
 //------------------------------------------------------------------
 // Ataxx tile fetch (ataxx_mode): the tile code comes from the tile RAM and each tile
-// row is one 4-word burst from the board's repack (bytes plane0..plane5, then 2 pad).
+// row is one 4-word burst from the MRA's interleave (bytes plane0..plane5, then 2 pad).
 // A 1024-entry direct-mapped row cache keyed by {code, row-in-tile} skips the burst on
 // a hit. Entry = {valid, tag[7:0], plane0 .. plane5}.
 //------------------------------------------------------------------
@@ -391,7 +391,7 @@ reg [14:0]  ax_code;
 wire [17:0] ax_idx  = {ax_code, fetch_riy};
 wire  [9:0] ax_cidx = ax_idx[9:0];
 wire  [7:0] ax_ctag = ax_idx[17:10];
-wire [24:0] ax_row_addr = ADDR_GFXAX_BASE[24:0] + {2'b0, ax_idx, 3'b000};
+wire [24:0] ax_row_addr = ADDR_GFX_BASE[24:0] + {2'b0, ax_idx, 3'b000};
 
 // Low tile byte at index, high byte at index | 0x4000 (MAME ataxx_get_tile_info)
 assign qram_addr = {fetch_row[6], (fetch_ph == FP_Q1), fetch_row[5:0], fetch_col};

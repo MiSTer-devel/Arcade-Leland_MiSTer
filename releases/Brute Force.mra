@@ -50,13 +50,19 @@
 			<part name="u4" crc="ca8ab3a6" length="0x20000" map="10"/>
 		</interleave>
 
-		<part name="u145" crc="c3d20d24" length="0x40000"/>
-		<part name="u146" crc="43e9dd87" length="0x40000"/>
-		<part name="u147" crc="fb855ce8" length="0x40000"/>
-		<part name="u148" crc="e4b54eae" length="0x40000"/>
-		<part name="u149" crc="cf48401c" length="0x40000"/>
-		<part name="u150" crc="ca9e1e33" length="0x40000"/>
-		<part repeat="0x180000">00</part>
+		<!-- Graphics planes byte-interleaved into 8-byte tile rows (plane0..plane5, then 2 pad
+		     bytes), the layout the video reads directly; plane 0 is repeated for the pad lanes. -->
+		<interleave output="64">
+			<part name="u145" crc="c3d20d24" length="0x40000" map="00000001"/>
+			<part name="u146" crc="43e9dd87" length="0x40000" map="00000010"/>
+			<part name="u147" crc="fb855ce8" length="0x40000" map="00000100"/>
+			<part name="u148" crc="e4b54eae" length="0x40000" map="00001000"/>
+			<part name="u149" crc="cf48401c" length="0x40000" map="00010000"/>
+			<part name="u150" crc="ca9e1e33" length="0x40000" map="00100000"/>
+			<part name="u145" crc="c3d20d24" length="0x40000" map="01000000"/>
+			<part name="u145" crc="c3d20d24" length="0x40000" map="10000000"/>
+		</interleave>
+		<part repeat="0x100000">00</part>
 
 		<part name="eeprom-brutforc.bin" crc="508809af" length="0x100"/>
 	</rom>

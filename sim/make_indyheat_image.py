@@ -39,7 +39,13 @@ sound = pad(bytes(0x20000) + s_a + s_b + bytes(0x20000) + s_b, 0x100000)
 
 gfx_names = ["e-302-33001-01.u145", "e-302-33002-01.u146", "e-302-33003-01.u147",
              "e-302-33004-01.u148", "e-302-33005-01.u149", "e-302-33006-01.u150"]
-gfx = pad(b"".join(rom(n) for n in gfx_names), 0x300000)
+# 8-byte tile rows, as the MRA's 64-bit interleave lays them down: plane0..plane5 on lanes 0-5,
+# plane 0 repeated on the two pad lanes
+planes = [rom(n) for n in gfx_names]
+rows = bytearray(8 * len(planes[0]))
+for lane in range(8):
+    rows[lane::8] = planes[lane if lane < 6 else 0]
+gfx = pad(bytes(rows), 0x300000)
 
 eeprom = rom("eeprom-indyheat.bin")
 

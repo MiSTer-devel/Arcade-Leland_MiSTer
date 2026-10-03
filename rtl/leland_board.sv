@@ -793,118 +793,11 @@ always @(posedge clk_sys) begin
 	end
 end
 
-//------------------------------------------------------------------
-// Ataxx gfx repack: packs the six plane files (raw at ADDR_GFX_BASE + n*0x20000, or
-// n*0x40000 with gfx_wide_r) into 8-byte tile rows at ADDR_GFXAX_BASE (plane0..plane5,
-// then 2 pad bytes), so leland_video fetches a whole row with one 4-word burst. Per
-// tile: six burst reads (one plane each, byte r = row r), then three word writes per
-// row (the pad word is left unwritten). It borrows rd2 and the write channel like the
-// gen 1-3 repack above, which is skipped for this board.
-//------------------------------------------------------------------
-typedef enum logic [2:0] {
-	RX_IDLE, RX_RD_REQ, RX_RD_WAIT, RX_WR_REQ, RX_WR_WAIT, RX_DONE
-} rx_state_e;
-
-rx_state_e rx_st;
-reg [14:0] rx_tile;
-reg  [2:0] rx_plane;
-reg  [2:0] rx_row;
-reg  [1:0] rx_w;
-reg [63:0] rx_buf0, rx_buf1, rx_buf2, rx_buf3, rx_buf4, rx_buf5;
-reg        rx_done;
-reg        rx_rd_req_r;
-reg [24:0] rx_rd_addr_r;
-reg        rx_wr_req_r;
-reg [24:0] rx_wr_addr_r;
-reg  [7:0] rx_wr_lo, rx_wr_hi;
-
-wire rx_active = (rx_st != RX_IDLE) && (rx_st != RX_DONE);
-
-reg [63:0] rx_sel_lo, rx_sel_hi;
-always @(*) begin
-	case (rx_w)
-		2'd0:    begin rx_sel_lo = rx_buf0; rx_sel_hi = rx_buf1; end
-		2'd1:    begin rx_sel_lo = rx_buf2; rx_sel_hi = rx_buf3; end
-		default: begin rx_sel_lo = rx_buf4; rx_sel_hi = rx_buf5; end
-	endcase
-end
-
-always @(posedge clk_sys) begin
-	if (sdram_init) begin
-		rx_st       <= RX_IDLE;
-		rx_tile     <= 15'd0;
-		rx_plane    <= 3'd0;
-		rx_row      <= 3'd0;
-		rx_w        <= 2'd0;
-		rx_done     <= 1'b0;
-		rx_rd_req_r <= 1'b0;
-		rx_wr_req_r <= 1'b0;
-	end else begin
-		case (rx_st)
-			RX_IDLE: if (ataxx_sel && dl_settled && !wr_pending) rx_st <= RX_RD_REQ;
-
-			RX_RD_REQ: begin
-				rx_rd_addr_r <= ADDR_GFX_BASE[24:0] + {4'b0, gfx_wide_r ? {rx_plane, 18'b0} : {1'b0, rx_plane, 17'b0}} + {7'b0, rx_tile, 3'b000};
-				rx_rd_req_r  <= 1'b1;
-				rx_st        <= RX_RD_WAIT;
-			end
-			RX_RD_WAIT: if (sdram_rd2_ack) begin
-				rx_rd_req_r <= 1'b0;
-				case (rx_plane)
-					3'd0:    rx_buf0 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
-					3'd1:    rx_buf1 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
-					3'd2:    rx_buf2 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
-					3'd3:    rx_buf3 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
-					3'd4:    rx_buf4 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
-					default: rx_buf5 <= {sdram_rd2_data16_w3, sdram_rd2_data16_w2, sdram_rd2_data16_hi, sdram_rd2_data16};
-				endcase
-				if (rx_plane == 3'd5) begin
-					rx_row <= 3'd0;
-					rx_w   <= 2'd0;
-					rx_st  <= RX_WR_REQ;
-				end else begin
-					rx_plane <= rx_plane + 3'd1;
-					rx_st    <= RX_RD_REQ;
-				end
-			end
-
-			RX_WR_REQ: begin
-				rx_wr_addr_r <= ADDR_GFXAX_BASE[24:0] + {4'b0, rx_tile, rx_row, 3'b000} + {22'b0, rx_w, 1'b0};
-				rx_wr_lo     <= rx_sel_lo[{rx_row, 3'b000} +: 8];
-				rx_wr_hi     <= rx_sel_hi[{rx_row, 3'b000} +: 8];
-				rx_wr_req_r  <= 1'b1;
-				rx_st        <= RX_WR_WAIT;
-			end
-			RX_WR_WAIT: if (sdram_wr_ack) begin
-				rx_wr_req_r <= 1'b0;
-				if (rx_w != 2'd2) begin
-					rx_w  <= rx_w + 2'd1;
-					rx_st <= RX_WR_REQ;
-				end else begin
-					rx_w <= 2'd0;
-					if (rx_row != 3'd7) begin
-						rx_row <= rx_row + 3'd1;
-						rx_st  <= RX_WR_REQ;
-					end else begin
-						rx_row <= 3'd0;
-						if (rx_tile == (gfx_wide_r ? 15'd32767 : 15'd16383)) begin
-							rx_st   <= RX_DONE;
-							rx_done <= 1'b1;
-						end else begin
-							rx_tile  <= rx_tile + 15'd1;
-							rx_plane <= 3'd0;
-							rx_st    <= RX_RD_REQ;
-						end
-					end
-				end
-			end
-
-			default: ; // RX_DONE
-		endcase
-	end
-end
-
-wire repack_done = ataxx_sel ? rx_done : repack_done_g;
+// Gen 4 (Ataxx, Indy Heat, Brute Force) has no graphics repack: the MRA byte-interleaves the six
+// plane files into 8-byte tile rows (plane0..plane5, then 2 pad bytes) as they load, at
+// ADDR_GFX_BASE, and leland_video fetches a row with one 4-word burst. Those boards are
+// ready as soon as the download has settled.
+wire repack_done = ataxx_sel ? dl_settled : repack_done_g;
 
 //------------------------------------------------------------------
 // Per-game EEPROM default content: runs once after repack_done, borrowing the same
@@ -1020,13 +913,13 @@ wire [15:0] eeprom_mem_wr_data = nv_mem_wr_r ? nv_mem_wr_data_r : ee_mem_wr_data
 // Final muxes: the repack FSM and the EEPROM loader borrow rd2/wr while active
 // (mutually exclusive: EE_IDLE only advances once repack_done); otherwise
 // leland_video's request and the ioctl loader's write pass straight through.
-assign sdram_rd2_req  = rx_active ? rx_rd_req_r : repack_active ? repack_rd_req_r  : (ee_active ? ee_rd_req_r  : sdram_rd2_req_v);
-assign sdram_rd2_addr = rx_active ? rx_rd_addr_r : repack_active ? repack_rd_addr_r : (ee_active ? ee_rd_addr_r : sdram_rd2_addr_v);
+assign sdram_rd2_req  = repack_active ? repack_rd_req_r  : (ee_active ? ee_rd_req_r  : sdram_rd2_req_v);
+assign sdram_rd2_addr = repack_active ? repack_rd_addr_r : (ee_active ? ee_rd_addr_r : sdram_rd2_addr_v);
 
-assign sdram_wr_req      = rx_active ? rx_wr_req_r : repack_active ? repack_wr_req_r     : wr_pending;
-assign sdram_wr_addr     = rx_active ? rx_wr_addr_r : repack_active ? repack_wr_addr_r    : sdram_wr_addr_ioctl;
-assign sdram_wr_data     = rx_active ? rx_wr_lo : repack_active ? repack_wr_data_r    : sdram_wr_data_ioctl;
-assign sdram_wr_data_hi  = rx_active ? rx_wr_hi : repack_active ? repack_wr_data_hi_r : sdram_wr_data_hi_ioctl;
+assign sdram_wr_req      = repack_active ? repack_wr_req_r     : wr_pending;
+assign sdram_wr_addr     = repack_active ? repack_wr_addr_r    : sdram_wr_addr_ioctl;
+assign sdram_wr_data     = repack_active ? repack_wr_data_r    : sdram_wr_data_ioctl;
+assign sdram_wr_data_hi  = repack_active ? repack_wr_data_hi_r : sdram_wr_data_hi_ioctl;
 
 //------------------------------------------------------------------
 // Graphics and palette ROMs live in SDRAM like all other ROM content (loaded through
@@ -1902,7 +1795,7 @@ leland_video video
 	.gfxbank(gfxbank_m),
 
 	.sdram_rd2_req  (sdram_rd2_req_v),
-	.sdram_rd2_ack  (sdram_rd2_ack & ~(rx_active | repack_active | ee_active)), // boot FSMs borrow rd2; their acks are not the video's
+	.sdram_rd2_ack  (sdram_rd2_ack & ~(repack_active | ee_active)), // boot FSMs borrow rd2; their acks are not the video's
 	.sdram_rd2_addr (sdram_rd2_addr_v),
 	.sdram_rd2_data (sdram_rd2_data),
 	.sdram_rd2_data16(sdram_rd2_data16),

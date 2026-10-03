@@ -90,10 +90,9 @@ package leland_board_pkg;
 	// ADDR_GFXW_BASE's region.
 	localparam logic [26:0] ADDR_GFXROW_BASE = ADDR_GFXW_BASE + 27'h010000;
 
-	// Ataxx 6-plane repack (board_class GEN4_ATAXX): 8 bytes per tile row, index
-	// tile*8 + row, bytes = plane0..plane5 then 2 pad bytes; up to 0x8000 tiles (0x200000
-	// bytes). It sits above the EEPROM image, clear of the raw planes (0x180000 at most).
-	localparam logic [26:0] ADDR_GFXAX_BASE  = ADDR_GFX_BASE + 27'h400000;
+	// Gen 4 graphics (Ataxx, Indy Heat, Brute Force): the MRA byte-interleaves the six plane files
+	// into 8-byte tile rows at ADDR_GFX_BASE (plane0..plane5 then 2 pad bytes, index
+	// tile*8 + row, up to 0x40000 rows = 2 MB), so no boot-time repack is needed.
 
 	localparam logic [26:0] ADDR_PROM_BASE   = 27'h600000; // bg_prom (gen1-3)
 	localparam logic [26:0] PROM_MAX         = 27'h040000; // 256 KB reserved

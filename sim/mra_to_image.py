@@ -2,9 +2,11 @@
 
 usage: python mra_to_image.py game.mra roms_dir out.bin
 
-Handles <part> (hex data, name/offset/length, repeat) and <interleave output="16"> with
-map="01" (even bytes) / map="10" (odd bytes). Files missing from the game's zip are
-looked up in its parent sets (offroad for offroadt).
+Handles <part> (hex data, name/offset/length, repeat) and <interleave output="N"> (N = 16..64)
+with one-hot hex maps, as Main_MiSTer's mra_loader does: the nonzero nibble at position p
+(counted from the right) puts that part on byte lane p of each output unit ("01" = even
+bytes, "10" = odd, "00000100" = lane 2 of 8). Files missing from the game's zip are looked up
+in its parent sets (offroad for offroadt).
 """
 import sys, zipfile, os
 import xml.etree.ElementTree as ET
@@ -41,14 +43,18 @@ for el in rom:
     if el.tag == 'part':
         img += part_bytes(el)
     elif el.tag == 'interleave':
-        parts = [(p.get('map'), part_bytes(p)) for p in el.findall('part')]
-        assert el.get('output') == '16' and len(parts) == 2, 'unsupported interleave'
-        even = next(b for m, b in parts if m == '01')
-        odd = next(b for m, b in parts if m == '10')
-        assert len(even) == len(odd)
-        buf = bytearray(len(even) * 2)
-        buf[0::2] = even
-        buf[1::2] = odd
+        unit = int(el.get('output')) // 8
+        parts = [(int(p.get('map'), 16), part_bytes(p)) for p in el.findall('part')]
+        n = len(parts[0][1])
+        buf = bytearray(n * unit)
+        seen = set()
+        for m, b in parts:
+            lane = next(i for i in range(unit) if (m >> (4 * i)) & 0xF)
+            assert (m >> (4 * lane)) == 1, 'only one-hot maps are supported'
+            assert len(b) == n and lane not in seen
+            seen.add(lane)
+            buf[lane::unit] = b
+        assert len(seen) == unit, 'every lane needs a part'
         img += buf
 open(out, 'wb').write(img)
 print(os.path.basename(mra), len(img), 'bytes')
